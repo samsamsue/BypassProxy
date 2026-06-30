@@ -7,6 +7,7 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/home-router-singbox-installer}"
 ARCHIVE_URL="${ARCHIVE_URL:-https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
 GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
+GITHUB_DOWNLOAD_PREFIXES="${GITHUB_DOWNLOAD_PREFIXES:-https://gh-proxy.com/ https://ghproxy.net/ https://gh.llkk.cc/}"
 
 if [ "$(id -u)" != "0" ]; then
   echo "请用 root 运行：" >&2
@@ -30,26 +31,46 @@ ensure_downloader() {
 download() {
   url="$1"
   out="$2"
+  urls="$url"
   case "$url" in
     https://github.com/*|https://raw.githubusercontent.com/*)
       if [ -n "$GITHUB_DOWNLOAD_PREFIX" ]; then
-        url="${GITHUB_DOWNLOAD_PREFIX}${url}"
+        urls="${GITHUB_DOWNLOAD_PREFIX}${url}"
+      else
+        for prefix in $GITHUB_DOWNLOAD_PREFIXES; do
+          urls="$urls ${prefix}${url}"
+        done
       fi
       ;;
   esac
+  for try_url in $urls; do
+    if download_once "$try_url" "$out"; then
+      return 0
+    fi
+    echo "下载失败，尝试下一个地址：$try_url" >&2
+  done
+  echo "下载失败：$url" >&2
+  return 1
+}
+
+download_once() {
+  url="$1"
+  out="$2"
+  partial="${out}.part"
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$DOWNLOAD_PROXY" ]; then
-      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 -x "$DOWNLOAD_PROXY" -o "$out" "$url"
+      curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 30 -C - -x "$DOWNLOAD_PROXY" -o "$partial" "$url"
     else
-      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 -o "$out" "$url"
+      curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 30 -C - -o "$partial" "$url"
     fi
   else
     if [ -n "$DOWNLOAD_PROXY" ]; then
-      HTTPS_PROXY="$DOWNLOAD_PROXY" HTTP_PROXY="$DOWNLOAD_PROXY" wget -q -O "$out" "$url"
+      HTTPS_PROXY="$DOWNLOAD_PROXY" HTTP_PROXY="$DOWNLOAD_PROXY" wget -c -O "$partial" "$url"
     else
-      wget -q -O "$out" "$url"
+      wget -c -O "$partial" "$url"
     fi
   fi
+  mv "$partial" "$out"
 }
 
 ensure_downloader

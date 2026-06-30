@@ -33,6 +33,9 @@ DOWNLOAD_PROXY=''
 # 示例：GITHUB_DOWNLOAD_PREFIX=https://你的加速地址/
 GITHUB_DOWNLOAD_PREFIX=''
 
+# 可选：未指定单个加速前缀时，会按顺序尝试这些 GitHub 下载加速前缀。
+GITHUB_DOWNLOAD_PREFIXES='https://gh-proxy.com/ https://ghproxy.net/ https://gh.llkk.cc/'
+
 # MetaCubeXD 静态 Web 面板更新来源。
 WEBUI_RELEASE_API=https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest
 WEBUI_DOWNLOAD_URL=https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz

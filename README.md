@@ -17,13 +17,16 @@
 curl -fsSL https://raw.githubusercontent.com/samsamsue/home_singbox_router/main/bootstrap.sh | sudo sh
 ```
 
-如果 GitHub 下载慢，可以临时加下载代理：
+如果 GitHub 访问慢，脚本启动后会自动尝试几个常见 GitHub 下载加速前缀。
+下载大文件时会显示进度；如果 30 秒内速度低于约 10KB/s，会自动尝试下一个下载地址。
+
+如果连上面这条命令里的 `raw.githubusercontent.com` 都打不开，需要先用你自己的代理或 raw 加速地址把 `bootstrap.sh` 拉下来。例如：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/samsamsue/home_singbox_router/main/bootstrap.sh | sudo env DOWNLOAD_PROXY=http://127.0.0.1:7890 sh
 ```
 
-也可以使用 GitHub 下载加速前缀：
+也可以手动指定 GitHub 下载加速前缀：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/samsamsue/home_singbox_router/main/bootstrap.sh | sudo env GITHUB_DOWNLOAD_PREFIX=https://你的加速地址/ sh

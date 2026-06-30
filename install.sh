@@ -212,10 +212,11 @@ SUBSCRIBE_USER_AGENT="${SUBSCRIBE_USER_AGENT:-clash.meta}"
 SINGBOX_DEB_URL="${SINGBOX_DEB_URL:-https://github.com/SagerNet/sing-box/releases/download/v1.13.14/sing-box_1.13.14_linux_amd64.deb}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
 GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
+GITHUB_DOWNLOAD_PREFIXES="${GITHUB_DOWNLOAD_PREFIXES:-https://gh-proxy.com/ https://ghproxy.net/ https://gh.llkk.cc/}"
 WEBUI_RELEASE_API="${WEBUI_RELEASE_API:-https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest}"
 WEBUI_DOWNLOAD_URL="${WEBUI_DOWNLOAD_URL:-https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz}"
 
-download_url() {
+download_urls() {
   url="$1"
   case "$url" in
     https://github.com/*|https://raw.githubusercontent.com/*)
@@ -223,6 +224,11 @@ download_url() {
         printf "%s%s" "$GITHUB_DOWNLOAD_PREFIX" "$url"
         return
       fi
+      printf "%s" "$url"
+      for prefix in $GITHUB_DOWNLOAD_PREFIXES; do
+        printf " %s%s" "$prefix" "$url"
+      done
+      return
       ;;
   esac
   printf "%s" "$url"
@@ -231,17 +237,31 @@ download_url() {
 download() {
   url="$1"
   out="$2"
-  real_url="$(download_url "$url")"
   echo "正在下载：$url" >&2
+  for real_url in $(download_urls "$url"); do
+    if download_once "$real_url" "$out"; then
+      return 0
+    fi
+    echo "下载失败，尝试下一个地址：$real_url" >&2
+  done
+  echo "下载失败：$url" >&2
+  return 1
+}
+
+download_once() {
+  real_url="$1"
+  out="$2"
+  partial="${out}.part"
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$DOWNLOAD_PROXY" ]; then
-      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 -x "$DOWNLOAD_PROXY" -o "$out" "$real_url"
+      curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 30 -C - -x "$DOWNLOAD_PROXY" -o "$partial" "$real_url"
     else
-      curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 --connect-timeout 15 -o "$out" "$real_url"
+      curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 30 -C - -o "$partial" "$real_url"
     fi
   else
-    wget -q -O "$out" "$real_url"
+    wget -c -O "$partial" "$real_url"
   fi
+  mv "$partial" "$out"
 }
 
 install_singbox() {
