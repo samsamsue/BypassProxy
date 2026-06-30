@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 set -eu
 
 CONF="${ROUTER_CONF:-/etc/home-router-singbox/router.conf}"

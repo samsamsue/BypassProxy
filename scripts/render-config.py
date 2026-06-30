@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import shlex
 from pathlib import Path
 
 
@@ -14,8 +15,18 @@ def load_conf(path: Path) -> dict:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        values[key.strip()] = value.strip()
+        values[key.strip()] = parse_conf_value(value.strip())
     return values
+
+
+def parse_conf_value(value: str) -> str:
+    try:
+        parts = shlex.split(value, comments=False, posix=True)
+    except ValueError:
+        return value
+    if len(parts) == 1:
+        return parts[0]
+    return value
 
 
 def load_outbounds(path: Path) -> str:

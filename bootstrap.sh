@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 set -eu
 
 REPO="${REPO:-samsamsue/home_singbox_router}"
