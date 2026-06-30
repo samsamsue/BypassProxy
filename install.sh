@@ -49,11 +49,12 @@ install_singbox() {
 }
 
 install_singbox
-mkdir -p "$BUILD" /etc/home-router-singbox /etc/sing-box /usr/local/sbin /usr/local/share/metacubexd
+mkdir -p "$BUILD" /etc/home-router-singbox /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share/metacubexd /opt/home-router-singbox
 
 cp "$CONF" /etc/home-router-singbox/router.conf
 python3 "$ROOT/scripts/render-config.py"
 cp "$BUILD/config.json" /etc/sing-box/config.json
+cp -a "$ROOT/scripts" "$ROOT/templates" /opt/home-router-singbox/
 
 if [ -d "$ROOT/webui" ]; then
   rm -rf /usr/local/share/metacubexd/*
@@ -62,6 +63,8 @@ fi
 
 cp "$ROOT/scripts/home-lan-bypass-forward.sh" /usr/local/sbin/home-lan-bypass-forward.sh
 chmod 0755 /usr/local/sbin/home-lan-bypass-forward.sh
+cp "$ROOT/scripts/sc-menu.sh" /usr/local/bin/sc
+chmod 0755 /usr/local/bin/sc
 
 cat > /etc/sysctl.d/99-home-lan-bypass-forward.conf <<SYSCTL
 net.ipv4.ip_forward=1
@@ -119,3 +122,4 @@ systemctl enable --now home-lan-bypass-forward.timer
 echo "Installed."
 echo "Panel: http://${REMOTE_IP:-$LAN_IP}:${PANEL_PORT}/ui/"
 echo "Proxy: http://${REMOTE_IP:-$LAN_IP}:${PROXY_PORT}"
+echo "Menu: sudo sc"

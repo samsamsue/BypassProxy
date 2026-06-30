@@ -98,6 +98,24 @@ curl.exe https://api.ipify.org --proxy http://REMOTE_IP:7890
 
 ## 7. 管理
 
+安装后直接运行菜单：
+
+```bash
+sudo sc
+```
+
+菜单可以：
+
+- 查看状态
+- 重启 sing-box
+- 看日志
+- 显示面板/代理地址
+- 修改基础配置
+- 检查配置
+- 重新应用旁路由转发/NAT
+
+命令行管理：
+
 ```bash
 ./manage.sh status
 ./manage.sh restart
