@@ -39,7 +39,6 @@ def load_outbounds(path: Path) -> str:
     if not tags:
         raise SystemExit("outbounds.json has no proxy outbounds")
     generated = [
-        {"type": "selector", "tag": "proxy", "outbounds": tags, "default": tags[0]},
         {
             "type": "urltest",
             "tag": "auto",
@@ -48,6 +47,7 @@ def load_outbounds(path: Path) -> str:
             "interval": "10m",
             "tolerance": 50,
         },
+        {"type": "selector", "tag": "proxy", "outbounds": ["auto"] + tags, "default": "auto"},
         {"type": "direct", "tag": "direct"},
         {"type": "block", "tag": "block"},
     ] + data
