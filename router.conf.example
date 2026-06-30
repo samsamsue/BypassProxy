@@ -1,0 +1,30 @@
+# Copy to router.conf and edit before running ./install.sh.
+
+# LAN side.
+LAN_IF=enp3s0
+LAN_NET=192.168.3.0/24
+LAN_IP=192.168.3.88
+
+# Remote management address, usually the ZeroTier IP of the router.
+REMOTE_IP=192.168.192.168
+
+# sing-box listeners.
+PROXY_PORT=7890
+PANEL_PORT=9091
+PANEL_SECRET=change-me
+
+# TUN settings.
+TUN_NAME=sbtun0
+TUN_ADDRESS=28.0.0.1/30
+
+# DNS used by the router host itself. Phone clients should normally use these
+# as DNS too, while gateway points to LAN_IP.
+DNS1=223.5.5.5
+DNS2=119.29.29.29
+
+# Download URL for Debian amd64. Override when you want a newer sing-box.
+SINGBOX_DEB_URL=https://github.com/SagerNet/sing-box/releases/download/v1.13.14/sing-box_1.13.14_linux_amd64.deb
+
+# Optional proxy used only when downloading dependencies during install.
+# Example: DOWNLOAD_PROXY=http://127.0.0.1:7890
+DOWNLOAD_PROXY=

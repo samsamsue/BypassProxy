@@ -1,0 +1,5 @@
+/router.conf
+/secrets/
+/build/
+/backups/
+*.tar.gz

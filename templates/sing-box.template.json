@@ -1,0 +1,194 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "cn",
+        "type": "udp",
+        "server": "{{DNS1}}"
+      },
+      {
+        "tag": "remote",
+        "type": "https",
+        "server": "dns.google",
+        "path": "/dns-query",
+        "domain_resolver": "cn"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          "google.com",
+          "googleapis.com",
+          "gstatic.com",
+          "youtube.com",
+          "ytimg.com",
+          "github.com",
+          "githubusercontent.com",
+          "telegram.org",
+          "twitter.com",
+          "x.com",
+          "facebook.com",
+          "instagram.com"
+        ],
+        "server": "remote"
+      },
+      {
+        "domain_suffix": [
+          "cn"
+        ],
+        "server": "cn"
+      }
+    ],
+    "final": "cn",
+    "strategy": "prefer_ipv4"
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "0.0.0.0",
+      "listen_port": {{PROXY_PORT}}
+    },
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "{{TUN_NAME}}",
+      "address": [
+        "{{TUN_ADDRESS}}"
+      ],
+      "mtu": 9000,
+      "auto_route": true,
+      "auto_redirect": true,
+      "strict_route": true,
+      "stack": "system",
+      "route_exclude_address": [
+        "192.168.0.0/16",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "100.64.0.0/10",
+        "{{DNS1}}/32",
+        "{{DNS2}}/32"
+      ]
+    }
+  ],
+  "outbounds": [
+    {{OUTBOUNDS}}
+  ],
+  "route": {
+    "auto_detect_interface": false,
+    "default_interface": "{{LAN_IF}}",
+    "default_domain_resolver": "cn",
+    "final": "proxy",
+    "rules": [
+      {
+        "action": "sniff",
+        "sniffer": [
+          "tls",
+          "http"
+        ],
+        "timeout": "300ms"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "ip_cidr": [
+          "192.168.0.0/16",
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "100.64.0.0/10",
+          "224.0.0.0/4",
+          "{{DNS1}}/32",
+          "{{DNS2}}/32"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "network": "udp",
+        "port": [
+          123,
+          3478,
+          500,
+          4500,
+          6881
+        ],
+        "outbound": "direct"
+      },
+      {
+        "domain_suffix": [
+          "douyin.com",
+          "douyinpic.com",
+          "douyincdn.com",
+          "douyinstatic.com",
+          "amemv.com",
+          "amemv.cn",
+          "snssdk.com",
+          "iesdouyin.com",
+          "byteimg.com",
+          "bytecdn.cn",
+          "bytecdn.com",
+          "bytedance.com",
+          "bytedance.net",
+          "zijieapi.com",
+          "pstatp.com",
+          "toutiao.com",
+          "qq.com",
+          "tencent.com",
+          "gtimg.com",
+          "weixin.qq.com",
+          "weixinbridge.com",
+          "bilibili.com",
+          "bilivideo.com",
+          "taobao.com",
+          "tmall.com",
+          "alicdn.com",
+          "jd.com",
+          "360buyimg.com",
+          "meituan.com",
+          "amap.com",
+          "autonavi.com",
+          "baidu.com",
+          "bdimg.com",
+          "bdstatic.com",
+          "163.com",
+          "126.com",
+          "mi.com",
+          "xiaomi.com"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "domain_suffix": [
+          "google.com",
+          "googleapis.com",
+          "gstatic.com",
+          "youtube.com",
+          "ytimg.com",
+          "github.com",
+          "githubusercontent.com",
+          "telegram.org",
+          "twitter.com",
+          "x.com",
+          "facebook.com",
+          "instagram.com"
+        ],
+        "outbound": "proxy"
+      }
+    ]
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true
+    },
+    "clash_api": {
+      "external_controller": "0.0.0.0:{{PANEL_PORT}}",
+      "external_ui": "/usr/local/share/metacubexd",
+      "secret": "{{PANEL_SECRET}}"
+    }
+  }
+}
