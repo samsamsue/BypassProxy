@@ -286,6 +286,7 @@ mkdir -p "$BUILD" /etc/home-router-singbox /etc/home-router-singbox/rules /etc/s
 
 cp "$CONF" /etc/home-router-singbox/router.conf
 cp -a "$ROOT/scripts" "$ROOT/templates" /opt/home-router-singbox/
+chmod 0755 /opt/home-router-singbox/scripts/*.sh /opt/home-router-singbox/scripts/*.py
 
 ensure_python_yaml
 if [ -n "$SUBSCRIBE_URL" ]; then

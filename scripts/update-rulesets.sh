@@ -40,13 +40,14 @@ download_once() {
   rm -f "$partial"
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$DOWNLOAD_PROXY" ]; then
-      curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 30 -x "$DOWNLOAD_PROXY" -o "$partial" "$real_url"
+      curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 30 -x "$DOWNLOAD_PROXY" -o "$partial" "$real_url" || return 1
     else
-      curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 30 -o "$partial" "$real_url"
+      curl -fL --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 30 -o "$partial" "$real_url" || return 1
     fi
   else
-    wget -O "$partial" "$real_url"
+    wget -O "$partial" "$real_url" || return 1
   fi
+  [ -s "$partial" ] || return 1
   mv "$partial" "$out"
 }
 

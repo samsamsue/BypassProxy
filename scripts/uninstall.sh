@@ -16,6 +16,7 @@ fi
 
 LAN_IF="${LAN_IF:-enp3s0}"
 LAN_NET="${LAN_NET:-192.168.3.0/24}"
+TUN_NAME="${TUN_NAME:-sbtun0}"
 
 confirm_uninstall() {
   if [ "${ASSUME_YES:-0}" = "1" ] || [ "${1:-}" = "--yes" ]; then
@@ -111,9 +112,11 @@ stop_services() {
 
 remove_firewall_rules() {
   remove_filter_rule FORWARD -i "$LAN_IF" -o "$LAN_IF" -s "$LAN_NET" -j ACCEPT
+  remove_filter_rule FORWARD -i "$LAN_IF" -o "$TUN_NAME" -s "$LAN_NET" -j ACCEPT
+  remove_filter_rule FORWARD -i "$TUN_NAME" -o "$LAN_IF" -d "$LAN_NET" -j ACCEPT
   remove_table_rule nat POSTROUTING -s "$LAN_NET" -o "$LAN_IF" -j MASQUERADE
 
-  # 兼容清理旧版本可能创建的规则。
+  # 兼容清理旧版本和旁路由转发脚本可能创建的规则。
   remove_table_rule mangle PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 443 -j RETURN
 }
 
