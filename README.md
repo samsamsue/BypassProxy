@@ -125,6 +125,7 @@ sudo sb
 - 更新订阅
 - 检查配置
 - 重新应用旁路由转发/NAT
+- 干净卸载并自动备份
 
 安装器也会创建兼容命令 `sc`，所以 `sudo sc` 仍然可用；推荐记 `sudo sb`。
 
@@ -136,6 +137,35 @@ sudo sb
 ./manage.sh logs
 ./manage.sh check
 ./manage.sh apply-forward
+./manage.sh uninstall
+```
+
+## 8. 卸载
+
+推荐运行菜单：
+
+```bash
+sudo sb
+```
+
+选择 `Uninstall cleanly`，然后按提示输入 `UNINSTALL` 确认。
+
+卸载会先备份到 `/root/home-router-singbox-uninstall-backup-时间.tar.gz`，再清理：
+
+- sing-box/home-router 服务和 timer
+- `sb`/`sc` 命令
+- `/etc/home-router-singbox`
+- `/etc/sing-box`
+- `/opt/home-router-singbox`
+- `/usr/local/share/metacubexd`
+- 本脚本创建的旁路由转发/NAT 规则
+
+默认会询问是否连 `sing-box` 软件包一起卸载。回车就是不卸载软件包，只清理本项目的服务、配置、命令和规则。
+
+如果你想跳过菜单直接卸载，并且连软件包一起卸载：
+
+```bash
+PURGE_SINGBOX=1 sudo -E /usr/local/sbin/home-router-uninstall.sh
 ```
 
 ## 安全提醒

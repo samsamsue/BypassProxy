@@ -91,6 +91,8 @@ cp "$ROOT/scripts/home-lan-bypass-forward.sh" /usr/local/sbin/home-lan-bypass-fo
 chmod 0755 /usr/local/sbin/home-lan-bypass-forward.sh
 cp "$ROOT/scripts/update-subscription.sh" /usr/local/sbin/home-router-update-subscription.sh
 chmod 0755 /usr/local/sbin/home-router-update-subscription.sh
+cp "$ROOT/scripts/uninstall.sh" /usr/local/sbin/home-router-uninstall.sh
+chmod 0755 /usr/local/sbin/home-router-uninstall.sh
 cp "$ROOT/scripts/sc-menu.sh" /usr/local/bin/sb
 chmod 0755 /usr/local/bin/sb
 ln -sf /usr/local/bin/sb /usr/local/bin/sc

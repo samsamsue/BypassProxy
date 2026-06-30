@@ -13,7 +13,7 @@ pause() {
 
 need_root() {
   if [ "$(id -u)" != "0" ]; then
-    echo "Please run as root: sudo sc" >&2
+    echo "Please run as root: sudo sb" >&2
     exit 1
   fi
 }
@@ -87,6 +87,14 @@ update_subscription() {
   fi
   ROUTER_CONF="$CONF" /usr/local/sbin/home-router-update-subscription.sh
   apply_config
+}
+
+uninstall_router() {
+  if [ ! -x /usr/local/sbin/home-router-uninstall.sh ]; then
+    echo "Missing uninstaller: /usr/local/sbin/home-router-uninstall.sh" >&2
+    return 1
+  fi
+  /usr/local/sbin/home-router-uninstall.sh
 }
 
 show_status() {
@@ -174,7 +182,8 @@ Home sing-box router (sb)
 6) Update subscription
 7) Check config
 8) Apply forwarding/NAT rules
-9) Quit
+9) Uninstall cleanly
+10) Quit
 
 EOF
     printf "Select: "
@@ -188,7 +197,8 @@ EOF
       6) update_subscription; pause ;;
       7) sing-box check -C /etc/sing-box; pause ;;
       8) /usr/local/sbin/home-lan-bypass-forward.sh; echo "Applied."; pause ;;
-      9|q|Q) exit 0 ;;
+      9) uninstall_router; exit 0 ;;
+      10|q|Q) exit 0 ;;
       *) echo "Invalid choice."; pause ;;
     esac
   done
