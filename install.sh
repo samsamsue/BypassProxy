@@ -282,7 +282,7 @@ ensure_python_yaml() {
 }
 
 install_singbox
-mkdir -p "$BUILD" /etc/home-router-singbox /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share/metacubexd /opt/home-router-singbox
+mkdir -p "$BUILD" /etc/home-router-singbox /etc/home-router-singbox/rules /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share/metacubexd /opt/home-router-singbox
 
 cp "$CONF" /etc/home-router-singbox/router.conf
 cp -a "$ROOT/scripts" "$ROOT/templates" /opt/home-router-singbox/
@@ -301,6 +301,10 @@ else
 fi
 
 ROUTER_CONF=/etc/home-router-singbox/router.conf \
+RULE_DIR=/etc/home-router-singbox/rules \
+  /opt/home-router-singbox/scripts/update-rulesets.sh
+
+ROUTER_CONF=/etc/home-router-singbox/router.conf \
 OUTBOUNDS_JSON=/etc/home-router-singbox/outbounds.json \
 OUTPUT="$BUILD/config.json" \
   python3 "$ROOT/scripts/render-config.py"
@@ -317,6 +321,8 @@ cp "$ROOT/scripts/update-subscription.sh" /usr/local/sbin/home-router-update-sub
 chmod 0755 /usr/local/sbin/home-router-update-subscription.sh
 cp "$ROOT/scripts/update-webui.sh" /usr/local/sbin/home-router-update-webui.sh
 chmod 0755 /usr/local/sbin/home-router-update-webui.sh
+cp "$ROOT/scripts/update-rulesets.sh" /usr/local/sbin/home-router-update-rulesets.sh
+chmod 0755 /usr/local/sbin/home-router-update-rulesets.sh
 cp "$ROOT/scripts/uninstall.sh" /usr/local/sbin/home-router-uninstall.sh
 chmod 0755 /usr/local/sbin/home-router-uninstall.sh
 cp "$ROOT/scripts/sc-menu.sh" /usr/local/bin/sb

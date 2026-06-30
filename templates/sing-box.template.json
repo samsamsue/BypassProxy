@@ -37,8 +37,26 @@
         "server": "remote"
       },
       {
+        "rule_set": "geosite-cn",
+        "server": "cn"
+      },
+      {
         "domain_suffix": [
-          "cn"
+          "cn",
+          "cloud.189.cn",
+          "cloud189.21cn.com",
+          "189.cn",
+          "21cn.com",
+          "e.189.cn",
+          "drive.quark.cn",
+          "quark.cn",
+          "uc.cn",
+          "ucpro.cn",
+          "alipan.com",
+          "aliyundrive.com",
+          "openapi.alipan.com",
+          "115.com",
+          "anxia.com"
         ],
         "server": "cn"
       }
@@ -83,6 +101,20 @@
     "default_interface": "{{LAN_IF}}",
     "default_domain_resolver": "cn",
     "final": "proxy",
+    "rule_set": [
+      {
+        "type": "local",
+        "tag": "geosite-cn",
+        "format": "binary",
+        "path": "/etc/home-router-singbox/rules/geosite-cn.srs"
+      },
+      {
+        "type": "local",
+        "tag": "geoip-cn",
+        "format": "binary",
+        "path": "/etc/home-router-singbox/rules/geoip-cn.srs"
+      }
+    ],
     "rules": [
       {
         "action": "sniff",
@@ -117,6 +149,14 @@
           4500,
           6881
         ],
+        "outbound": "direct"
+      },
+      {
+        "rule_set": "geosite-cn",
+        "outbound": "direct"
+      },
+      {
+        "rule_set": "geoip-cn",
         "outbound": "direct"
       },
       {
@@ -158,7 +198,21 @@
           "163.com",
           "126.com",
           "mi.com",
-          "xiaomi.com"
+          "xiaomi.com",
+          "cloud.189.cn",
+          "cloud189.21cn.com",
+          "189.cn",
+          "21cn.com",
+          "e.189.cn",
+          "drive.quark.cn",
+          "quark.cn",
+          "uc.cn",
+          "ucpro.cn",
+          "alipan.com",
+          "aliyundrive.com",
+          "openapi.alipan.com",
+          "115.com",
+          "anxia.com"
         ],
         "outbound": "direct"
       },

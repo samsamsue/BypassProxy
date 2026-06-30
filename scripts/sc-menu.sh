@@ -68,11 +68,25 @@ prompt_key() {
   fi
 }
 
+update_rulesets() {
+  if [ -x /usr/local/sbin/home-router-update-rulesets.sh ]; then
+    ROUTER_CONF="$CONF" RULE_DIR=/etc/home-router-singbox/rules /usr/local/sbin/home-router-update-rulesets.sh
+    return
+  fi
+  if [ -x "$APP_DIR/scripts/update-rulesets.sh" ]; then
+    ROUTER_CONF="$CONF" RULE_DIR=/etc/home-router-singbox/rules "$APP_DIR/scripts/update-rulesets.sh"
+    return
+  fi
+  echo "缺少分流规则更新脚本。" >&2
+  return 1
+}
+
 apply_config() {
   if [ ! -x "$APP_DIR/scripts/render-config.py" ]; then
     echo "缺少配置生成器：$APP_DIR/scripts/render-config.py" >&2
     return 1
   fi
+  update_rulesets
   ROUTER_CONF="$CONF" OUTBOUNDS_JSON=/etc/home-router-singbox/outbounds.json OUTPUT="$CONFIG_JSON" python3 "$APP_DIR/scripts/render-config.py"
   sing-box check -C /etc/sing-box
   systemctl restart sing-box
@@ -108,7 +122,7 @@ uninstall_router() {
 show_status() {
   load_conf
   echo "sing-box 状态：$(systemctl is-active sing-box 2>/dev/null || true)"
-  echo "ShellCrash: $(systemctl is-active shellcrash.service 2>/dev/null || true)"
+  echo "ShellCrash：$(systemctl is-active shellcrash.service 2>/dev/null || true)"
   echo
   echo "面板地址：http://${LAN_IP}:${PANEL_PORT}/ui/"
   echo "面板后端：http://${LAN_IP}:${PANEL_PORT}"
@@ -123,7 +137,7 @@ show_status() {
   echo
   echo "家里手机设置："
   echo "  网关：${LAN_IP}"
-  echo "  DNS: ${DNS1} or ${DNS2}"
+  echo "  DNS：${DNS1} 或 ${DNS2}"
   if [ -n "$SUBSCRIBE_URL" ]; then
     echo
     echo "订阅：已配置"
@@ -188,12 +202,12 @@ Home sing-box 旁路由 (sb)
 4) 显示面板/代理地址
 5) 修改基础设置（提示输入）
 6) 更新订阅
-7) 更新 Web 面板
-8) 检查配置
-9) 应用旁路由转发/NAT
-10) 干净卸载
-11) 退出
-
+7) 更新国内分流规则
+8) 更新 Web 面板
+9) 检查配置
+10) 应用旁路由转发/NAT
+11) 干净卸载
+12) 退出
 EOF
     printf "请选择："
     read choice || exit 0
@@ -204,11 +218,12 @@ EOF
       4) open_info; pause ;;
       5) edit_basic; pause ;;
       6) update_subscription; pause ;;
-      7) update_webui; pause ;;
-      8) sing-box check -C /etc/sing-box; pause ;;
-      9) /usr/local/sbin/home-lan-bypass-forward.sh; echo "已应用。"; pause ;;
-      10) uninstall_router; exit 0 ;;
-      11|q|Q) exit 0 ;;
+      7) update_rulesets; apply_config; pause ;;
+      8) update_webui; pause ;;
+      9) sing-box check -C /etc/sing-box; pause ;;
+      10) /usr/local/sbin/home-lan-bypass-forward.sh; echo "已应用。"; pause ;;
+      11) uninstall_router; exit 0 ;;
+      12|q|Q) exit 0 ;;
       *) echo "无效选择。"; pause ;;
     esac
   done
