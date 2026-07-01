@@ -68,6 +68,14 @@ prompt_key() {
   fi
 }
 
+secret_status() {
+  if [ -n "${PANEL_SECRET:-}" ]; then
+    printf "已设置"
+  else
+    printf "未设置"
+  fi
+}
+
 update_rulesets() {
   if [ -x /usr/local/sbin/home-router-update-rulesets.sh ]; then
     ROUTER_CONF="$CONF" RULE_DIR=/etc/home-router-singbox/rules /usr/local/sbin/home-router-update-rulesets.sh
@@ -94,6 +102,16 @@ apply_config() {
   /usr/local/sbin/home-lan-bypass-forward.sh 2>/dev/null || true
 }
 
+check_config() {
+  echo "正在检查 sing-box 配置..."
+  if sing-box check -C /etc/sing-box; then
+    echo "配置检查通过。"
+    return 0
+  fi
+  echo "配置检查失败，请查看上面的错误信息。" >&2
+  return 1
+}
+
 update_subscription() {
   if [ ! -x /usr/local/sbin/home-router-update-subscription.sh ]; then
     echo "缺少订阅更新脚本：/usr/local/sbin/home-router-update-subscription.sh" >&2
@@ -111,6 +129,32 @@ update_webui() {
   ROUTER_CONF="$CONF" /usr/local/sbin/home-router-update-webui.sh
 }
 
+update_core() {
+  if [ -x /usr/local/sbin/home-router-update-core.sh ]; then
+    ROUTER_CONF="$CONF" /usr/local/sbin/home-router-update-core.sh
+    return
+  fi
+  if [ -x "$APP_DIR/scripts/update-core.sh" ]; then
+    ROUTER_CONF="$CONF" "$APP_DIR/scripts/update-core.sh"
+    return
+  fi
+  echo "缺少项目更新脚本。" >&2
+  return 1
+}
+
+diagnose_network() {
+  if [ -x /usr/local/sbin/home-router-diagnose-network.sh ]; then
+    ROUTER_CONF="$CONF" /usr/local/sbin/home-router-diagnose-network.sh
+    return
+  fi
+  if [ -x "$APP_DIR/scripts/diagnose-network.sh" ]; then
+    ROUTER_CONF="$CONF" "$APP_DIR/scripts/diagnose-network.sh"
+    return
+  fi
+  echo "缺少网络诊断脚本。" >&2
+  return 1
+}
+
 uninstall_router() {
   if [ ! -x /usr/local/sbin/home-router-uninstall.sh ]; then
     echo "缺少卸载脚本：/usr/local/sbin/home-router-uninstall.sh" >&2
@@ -126,7 +170,7 @@ show_status() {
   echo
   echo "面板地址：http://${LAN_IP}:${PANEL_PORT}/ui/"
   echo "面板后端：http://${LAN_IP}:${PANEL_PORT}"
-  echo "面板密钥：${PANEL_SECRET}"
+  echo "面板密钥：$(secret_status)"
   echo "显式代理：http://${LAN_IP}:${PROXY_PORT}"
   zt_ip="$(detect_zt_ip || true)"
   if [ -n "$zt_ip" ]; then
@@ -180,12 +224,28 @@ $(if [ -n "$zt_ip" ]; then printf "  ZeroTier 面板：http://%s:%s/ui/\n" "$zt_
 MetaCubeXD 要求填写后端时：
   LAN 后端：http://${LAN_IP}:${PANEL_PORT}
 $(if [ -n "$zt_ip" ]; then printf "  ZeroTier 后端：http://%s:%s\n" "$zt_ip" "$PANEL_PORT"; fi)
-  密钥：${PANEL_SECRET}
+  密钥：$(secret_status)
 
 显式代理：
   LAN：http://${LAN_IP}:${PROXY_PORT}
 $(if [ -n "$zt_ip" ]; then printf "  ZeroTier：http://%s:%s\n" "$zt_ip" "$PROXY_PORT"; fi)
 EOF
+}
+
+show_panel_secret() {
+  load_conf
+  if [ -z "${PANEL_SECRET:-}" ]; then
+    echo "面板密钥未设置。"
+    return
+  fi
+  echo "面板密钥属于敏感信息。"
+  printf "请输入 SHOW 后显示："
+  read answer || answer=""
+  if [ "$answer" = "SHOW" ]; then
+    echo "面板密钥：${PANEL_SECRET}"
+  else
+    echo "已取消。"
+  fi
 }
 
 main_menu() {
@@ -200,14 +260,17 @@ Home sing-box 旁路由 (sb)
 2) 重启 sing-box
 3) 查看日志
 4) 显示面板/代理地址
-5) 修改基础设置（提示输入）
-6) 更新订阅
-7) 更新国内分流规则
-8) 更新 Web 面板
-9) 检查配置
-10) 应用旁路由转发/NAT
-11) 干净卸载
-12) 退出
+5) 显示面板密钥
+6) 修改基础设置（提示输入）
+7) 更新订阅
+8) 更新国内分流规则
+9) 更新 Web 面板
+10) 更新本项目脚本
+11) 检查配置
+12) 网络诊断
+13) 应用旁路由转发/NAT
+14) 干净卸载
+15) 退出
 EOF
     printf "请选择："
     read choice || exit 0
@@ -216,14 +279,17 @@ EOF
       2) apply_config; echo "已重启。"; pause ;;
       3) journalctl -u sing-box -f ;;
       4) open_info; pause ;;
-      5) edit_basic; pause ;;
-      6) update_subscription; pause ;;
-      7) update_rulesets; apply_config; pause ;;
-      8) update_webui; pause ;;
-      9) sing-box check -C /etc/sing-box; pause ;;
-      10) /usr/local/sbin/home-lan-bypass-forward.sh; echo "已应用。"; pause ;;
-      11) uninstall_router; exit 0 ;;
-      12|q|Q) exit 0 ;;
+      5) show_panel_secret; pause ;;
+      6) edit_basic; pause ;;
+      7) update_subscription; pause ;;
+      8) update_rulesets; apply_config; pause ;;
+      9) update_webui; pause ;;
+      10) update_core; pause ;;
+      11) check_config; pause ;;
+      12) diagnose_network; pause ;;
+      13) /usr/local/sbin/home-lan-bypass-forward.sh; echo "已应用。"; pause ;;
+      14) uninstall_router; exit 0 ;;
+      15|q|Q) exit 0 ;;
       *) echo "无效选择。"; pause ;;
     esac
   done

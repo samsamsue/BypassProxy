@@ -5,6 +5,7 @@ REPO="${REPO:-samsamsue/home_singbox_router}"
 BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/home-router-singbox-installer}"
 ARCHIVE_URL="${ARCHIVE_URL:-https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz}"
+REMOTE_SHA_URL="${REMOTE_SHA_URL:-https://api.github.com/repos/${REPO}/commits/${BRANCH}}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
 GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
 GITHUB_DOWNLOAD_PREFIXES="${GITHUB_DOWNLOAD_PREFIXES:-https://gh-proxy.com/ https://ghproxy.net/ https://gh.llkk.cc/}"
@@ -82,6 +83,19 @@ trap cleanup EXIT INT TERM
 
 archive="$tmp/source.tar.gz"
 download "$ARCHIVE_URL" "$archive"
+remote_json="$tmp/remote.json"
+remote_version=""
+if download "$REMOTE_SHA_URL" "$remote_json"; then
+  remote_version="$(python3 - "$remote_json" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    data = json.load(f)
+print(data.get("sha", ""))
+PY
+)"
+fi
 rm -rf "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 tar -xzf "$archive" -C "$tmp"
@@ -92,6 +106,9 @@ if [ -z "$src" ]; then
 fi
 cp -R "$src/." "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
+if [ -n "$remote_version" ]; then
+  printf "%s\n" "$remote_version" > "$INSTALL_DIR/.home-router-version"
+fi
 
 echo "安装器已下载到 $INSTALL_DIR"
 cd "$INSTALL_DIR"

@@ -14,6 +14,7 @@ GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
 GITHUB_DOWNLOAD_PREFIXES="${GITHUB_DOWNLOAD_PREFIXES:-https://gh-proxy.com/ https://ghproxy.net/ https://gh.llkk.cc/}"
 GEOIP_CN_URL="${GEOIP_CN_URL:-https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs}"
 GEOSITE_CN_URL="${GEOSITE_CN_URL:-https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs}"
+FORCE_RULESET_UPDATE="${FORCE_RULESET_UPDATE:-0}"
 
 download_urls() {
   url="$1"
@@ -51,6 +52,39 @@ download_once() {
   mv "$partial" "$out"
 }
 
+metadata_once() {
+  real_url="$1"
+  out="$2"
+  tmp="${out}.headers"
+  rm -f "$tmp"
+  if command -v curl >/dev/null 2>&1; then
+    if [ -n "$DOWNLOAD_PROXY" ]; then
+      curl -fsSLI --connect-timeout 15 -x "$DOWNLOAD_PROXY" -o "$tmp" "$real_url" || return 1
+    else
+      curl -fsSLI --connect-timeout 15 -o "$tmp" "$real_url" || return 1
+    fi
+  else
+    return 1
+  fi
+  awk '
+    BEGIN { IGNORECASE = 1 }
+    /^etag:/ { sub(/\r$/, ""); print; found = 1 }
+    /^last-modified:/ { sub(/\r$/, ""); print; found = 1 }
+    END { if (!found) exit 1 }
+  ' "$tmp" > "$out"
+}
+
+metadata() {
+  url="$1"
+  out="$2"
+  for real_url in $(download_urls "$url"); do
+    if metadata_once "$real_url" "$out"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 download() {
   url="$1"
   out="$2"
@@ -65,7 +99,33 @@ download() {
   return 1
 }
 
+update_rule() {
+  name="$1"
+  url="$2"
+  target="$RULE_DIR/${name}.srs"
+  version="$RULE_DIR/${name}.version"
+  remote_version="$RULE_DIR/${name}.remote-version"
+
+  if [ "$FORCE_RULESET_UPDATE" != "1" ] && [ -s "$target" ] && [ -f "$version" ]; then
+    if metadata "$url" "$remote_version" && cmp -s "$version" "$remote_version"; then
+      echo "${name} 已是最新。"
+      rm -f "$remote_version"
+      return 0
+    fi
+  fi
+
+  download "$url" "$target"
+  if [ -s "$remote_version" ]; then
+    mv "$remote_version" "$version"
+  elif metadata "$url" "$version" 2>/dev/null; then
+    :
+  else
+    date -u +"updated-at: %Y-%m-%dT%H:%M:%SZ" > "$version"
+  fi
+  echo "${name} 已更新。"
+}
+
 mkdir -p "$RULE_DIR"
-download "$GEOSITE_CN_URL" "$RULE_DIR/geosite-cn.srs"
-download "$GEOIP_CN_URL" "$RULE_DIR/geoip-cn.srs"
-echo "国内分流规则已更新：$RULE_DIR"
+update_rule geosite-cn "$GEOSITE_CN_URL"
+update_rule geoip-cn "$GEOIP_CN_URL"
+echo "国内分流规则检查完成：$RULE_DIR"

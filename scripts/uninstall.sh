@@ -69,6 +69,8 @@ backup_existing_files() {
     /usr/local/sbin/home-router-update-subscription.sh \
     /usr/local/sbin/home-router-update-webui.sh \
     /usr/local/sbin/home-router-update-rulesets.sh \
+    /usr/local/sbin/home-router-update-core.sh \
+    /usr/local/sbin/home-router-diagnose-network.sh \
     /usr/local/sbin/home-router-uninstall.sh \
     /usr/local/bin/sb \
     /usr/local/bin/sc
@@ -129,6 +131,8 @@ remove_files() {
     /usr/local/sbin/home-router-update-subscription.sh \
     /usr/local/sbin/home-router-update-webui.sh \
     /usr/local/sbin/home-router-update-rulesets.sh \
+    /usr/local/sbin/home-router-update-core.sh \
+    /usr/local/sbin/home-router-diagnose-network.sh \
     /usr/local/bin/sb \
     /usr/local/bin/sc
 

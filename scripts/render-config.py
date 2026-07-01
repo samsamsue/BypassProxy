@@ -70,7 +70,7 @@ def main() -> None:
         "LAN_IP": "192.168.3.88",
         "PROXY_PORT": "7890",
         "PANEL_PORT": "9091",
-        "PANEL_SECRET": "change-me",
+        "PANEL_SECRET": "abc123",
         "TUN_NAME": "sbtun0",
         "TUN_ADDRESS": "28.0.0.1/30",
         "DNS1": "223.5.5.5",

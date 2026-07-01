@@ -13,9 +13,6 @@ if [ -f "$CONF" ]; then
   . "$CONF"
 fi
 
-WEBUI_DIR="${WEBUI_DIR:-/usr/local/share/metacubexd}"
-WEBUI_RELEASE_API="${WEBUI_RELEASE_API:-https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest}"
-WEBUI_DOWNLOAD_URL="${WEBUI_DOWNLOAD_URL:-https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
 GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
 
@@ -127,6 +124,14 @@ fi
 if [ -n "$latest_tag" ] && [ "$latest_tag" = "$current_tag" ] && [ "${FORCE_WEBUI_UPDATE:-0}" != "1" ]; then
   echo "MetaCubeXD Web 面板已是最新版本：$latest_tag"
   exit 0
+fi
+
+if [ -n "$latest_tag" ] && [ -n "$current_tag" ]; then
+  echo "发现 MetaCubeXD Web 面板新版本：$current_tag -> $latest_tag"
+elif [ -n "$latest_tag" ]; then
+  echo "发现 MetaCubeXD Web 面板版本：$latest_tag"
+else
+  echo "未能判断 Web 面板版本，将下载覆盖更新。"
 fi
 
 archive="$tmp/compressed-dist.tgz"

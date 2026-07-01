@@ -96,14 +96,6 @@ fallback_lan_net() {
   '
 }
 
-random_secret() {
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -hex 8
-  else
-    date +%s | awk '{ print "sb" $1 }'
-  fi
-}
-
 write_conf() {
   tmp="${CONF}.tmp"
   mkdir -p "$(dirname "$CONF")"
@@ -147,8 +139,6 @@ create_conf_interactively() {
   if [ -z "$detected_net" ]; then
     detected_net="$(fallback_lan_net "${detected_ip:-192.168.3.88}")"
   fi
-  default_secret="$(random_secret)"
-
   LAN_IF="${detected_if:-enp3s0}"
   LAN_IP="${detected_ip:-192.168.3.88}"
   LAN_NET="${detected_net:-192.168.3.0/24}"
@@ -171,7 +161,7 @@ create_conf_interactively() {
 
   PROXY_PORT="$(prompt_value "代理端口" "7890")"
   PANEL_PORT="$(prompt_value "面板端口" "9091")"
-  PANEL_SECRET="$(prompt_value "面板密钥" "$default_secret")"
+  PANEL_SECRET="$(prompt_value "面板密钥" "abc123")"
 
   SUBSCRIBE_URL=""
   while [ -z "$SUBSCRIBE_URL" ] && [ ! -f "$ROOT/secrets/outbounds.json" ]; do
@@ -287,6 +277,9 @@ mkdir -p "$BUILD" /etc/home-router-singbox /etc/home-router-singbox/rules /etc/s
 cp "$CONF" /etc/home-router-singbox/router.conf
 cp -a "$ROOT/scripts" "$ROOT/templates" /opt/home-router-singbox/
 chmod 0755 /opt/home-router-singbox/scripts/*.sh /opt/home-router-singbox/scripts/*.py
+if [ -f "$ROOT/.home-router-version" ]; then
+  cp "$ROOT/.home-router-version" /opt/home-router-singbox/.home-router-version
+fi
 
 ensure_python_yaml
 if [ -n "$SUBSCRIBE_URL" ]; then
@@ -324,6 +317,10 @@ cp "$ROOT/scripts/update-webui.sh" /usr/local/sbin/home-router-update-webui.sh
 chmod 0755 /usr/local/sbin/home-router-update-webui.sh
 cp "$ROOT/scripts/update-rulesets.sh" /usr/local/sbin/home-router-update-rulesets.sh
 chmod 0755 /usr/local/sbin/home-router-update-rulesets.sh
+cp "$ROOT/scripts/update-core.sh" /usr/local/sbin/home-router-update-core.sh
+chmod 0755 /usr/local/sbin/home-router-update-core.sh
+cp "$ROOT/scripts/diagnose-network.sh" /usr/local/sbin/home-router-diagnose-network.sh
+chmod 0755 /usr/local/sbin/home-router-diagnose-network.sh
 cp "$ROOT/scripts/uninstall.sh" /usr/local/sbin/home-router-uninstall.sh
 chmod 0755 /usr/local/sbin/home-router-uninstall.sh
 cp "$ROOT/scripts/sc-menu.sh" /usr/local/bin/sb

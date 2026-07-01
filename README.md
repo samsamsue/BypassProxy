@@ -9,6 +9,13 @@
 - 国外流量走订阅节点
 - 用 `sb` 菜单管理，不手改配置文件
 
+适用范围：
+
+- Debian/Ubuntu 服务器，建议直接装在实体机、虚拟机或 LXC 上
+- 服务器和手机在同一个家里 LAN，手机手动把网关设成旁路由 IP
+- WSL 可以用来测试菜单、订阅、面板和显式代理，不适合作为真正的家用旁路由
+- 这不是 OpenWrt 固件，也不接管主路由 DHCP
+
 默认分流策略：
 
 - 国内域名走 `geosite-cn` 规则集直连
@@ -43,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/samsamsue/home_singbox_router/main/
 
 - 代理端口
 - 面板端口
-- 面板密钥
+- 面板密钥，默认 `abc123`
 - Clash/Mihomo 订阅地址
 
 LAN 网卡、旁路由 LAN IP、LAN 网段会自动检测。正常直接回车确认即可；检测不对时再选择修改。
@@ -84,15 +91,25 @@ sudo sb
 - 重启 sing-box
 - 查看日志
 - 显示面板和代理地址
+- 显示面板密钥
 - 用提示输入修改基础设置
 - 更新订阅
 - 更新国内分流规则
 - 更新 MetaCubeXD Web 面板
+- 更新本项目脚本
 - 检查配置
+- 网络诊断
 - 重新应用旁路由转发/NAT
 - 干净卸载
 
 为了兼容习惯，也会创建 `sudo sc`，但推荐记 `sudo sb`。
+
+几个“更新”的区别：
+
+- 更新订阅：重新拉取你的 Clash/Mihomo 订阅并生成节点
+- 更新国内分流规则：检查 `geosite-cn`、`geoip-cn` 是否有新版本，有变化才下载
+- 更新 Web 面板：检查 MetaCubeXD 最新版本，有新版本才更新
+- 更新本项目脚本：检查 GitHub 上这个安装器有没有新提交，有新版本才更新
 
 ## Web 面板
 
@@ -109,8 +126,27 @@ http://旁路由IP:9091
 ```
 
 密钥就是安装时设置的面板密钥。
+新安装默认是 `abc123`，也可以在 `sudo sb` 里修改。普通菜单不会直接显示明文密钥，需要选择“显示面板密钥”并确认后才显示。
 
 如果通过 ZeroTier 远程管理，`sudo sb` 会自动显示 ZeroTier 面板地址。
+
+## 手机设网关后不能上网
+
+先在旁路由服务器运行：
+
+```bash
+sudo sb
+```
+
+然后按这个顺序处理：
+
+- 选择“网络诊断”，看有没有 `FAIL`
+- 选择“应用旁路由转发/NAT”，重新写入转发规则
+- 再选择“检查配置”，确认 sing-box 配置通过
+
+真正关键的是：旁路由必须打开 IPv4 转发，并且要有 LAN 到 sing-box TUN 的转发/NAT 规则。只装好 sing-box 但没放通内核转发，手机把网关改成旁路由 IP 后就容易表现为不能上网。
+
+网络诊断是通用检查。它会顺便检查 Docker 容器 DNS；如果机器上刚好有 OpenList，会额外测一下天翼云解析，但没有 OpenList 也不会报错。
 
 ## 显式代理
 
@@ -134,7 +170,7 @@ curl.exe https://api.ipify.org --proxy http://旁路由IP:7890
 sudo sb
 ```
 
-选择 `Uninstall cleanly`，按提示输入：
+选择“干净卸载”，按提示输入：
 
 ```text
 UNINSTALL
