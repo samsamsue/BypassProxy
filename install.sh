@@ -323,7 +323,11 @@ if [ -f "$ROOT/.bypassproxy-version" ]; then
 fi
 
 ensure_python_yaml
-if [ -n "$SUBSCRIBE_URL" ] || [ -n "$SUBSCRIBE_URLS" ]; then
+has_managed_subscriptions=0
+if find /etc/bypassproxy/subscriptions.d -maxdepth 1 -type f -name '*.conf' 2>/dev/null | grep -q .; then
+  has_managed_subscriptions=1
+fi
+if [ -n "$SUBSCRIBE_URL" ] || [ -n "$SUBSCRIBE_URLS" ] || [ "$has_managed_subscriptions" = "1" ]; then
   ROUTER_CONF=/etc/bypassproxy/router.conf \
   OUTBOUNDS_JSON=/etc/bypassproxy/outbounds.json \
   SUBSCRIPTION_CACHE=/etc/bypassproxy/subscription.yaml \
@@ -333,7 +337,7 @@ if [ -n "$SUBSCRIBE_URL" ] || [ -n "$SUBSCRIBE_URLS" ]; then
 elif [ -f "$ROOT/secrets/outbounds.json" ]; then
   cp "$ROOT/secrets/outbounds.json" /etc/bypassproxy/outbounds.json
 else
-  echo "缺少代理节点。请在 router.conf 设置 SUBSCRIBE_URL/SUBSCRIBE_URLS，或创建 secrets/outbounds.json。" >&2
+  echo "缺少代理节点。请在 Web 管理页或 sudo bp 添加订阅/节点，或在 router.conf 设置 SUBSCRIBE_URL/SUBSCRIBE_URLS。" >&2
   exit 1
 fi
 
