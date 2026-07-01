@@ -112,7 +112,7 @@ read_current_version() {
 
 read_remote_version() {
   out="$1"
-  download "$REMOTE_SHA_URL" "$out"
+  download "$REMOTE_SHA_URL" "$out" || return 1
   python3 - "$out" <<'PY'
 import json
 import sys
@@ -123,6 +123,19 @@ print(data.get("sha", ""))
 PY
 }
 
+archive_version() {
+  archive="$1"
+  top="$(tar -tzf "$archive" 2>/dev/null | sed -n '1p' | cut -d/ -f1)"
+  case "$top" in
+    *-*)
+      printf "%s\n" "${top##*-}"
+      ;;
+    *)
+      printf "%s\n" "$top"
+      ;;
+  esac
+}
+
 ensure_downloader
 tmp="$(mktemp -d /tmp/bypassproxy-update.XXXXXX)"
 cleanup() {
@@ -131,8 +144,19 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 remote_json="$tmp/remote.json"
-remote_version="$(read_remote_version "$remote_json")"
+archive="$tmp/source.tar.gz"
+remote_version=""
+if remote_version="$(read_remote_version "$remote_json" 2>/dev/null)"; then
+  remote_version="$(printf "%s" "$remote_version" | sed -n '1p')"
+else
+  echo "WARN 无法通过 GitHub API 获取远端版本，将改用源码包判断。" >&2
+fi
 current_version="$(read_current_version)"
+
+if [ -z "$remote_version" ]; then
+  download "$ARCHIVE_URL" "$archive"
+  remote_version="$(archive_version "$archive")"
+fi
 
 if [ -z "$remote_version" ]; then
   echo "无法获取远端版本号，停止更新。" >&2
@@ -152,8 +176,9 @@ else
   echo "当前没有版本记录，将安装远端版本：$remote_version" >&2
 fi
 
-archive="$tmp/source.tar.gz"
-download "$ARCHIVE_URL" "$archive"
+if [ ! -s "$archive" ]; then
+  download "$ARCHIVE_URL" "$archive"
+fi
 tar -xzf "$archive" -C "$tmp"
 src="$(find "$tmp" -mindepth 2 -maxdepth 2 -type f -name install.sh -exec dirname {} \; | head -n 1)"
 if [ -z "$src" ]; then
