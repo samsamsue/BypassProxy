@@ -56,7 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/samsamsue/BypassProxy/main/bootstra
 LAN 网卡、旁路由 LAN IP、LAN 网段会自动检测。正常直接回车确认即可；检测不对时再选择修改。
 DNS 默认使用 `223.5.5.5` 和 `119.29.29.29`，安装时不用填。
 
-看不懂的地方直接回车，保留默认值即可。订阅地址可以填 Clash/Mihomo 订阅、v2ray base64 订阅，或直接填 `vmess://` 节点链接。
+看不懂的地方直接回车，保留默认值即可。订阅地址可以填 Clash/Mihomo 订阅、v2ray base64 订阅，或直接填 `vmess://`、`vless://`、`trojan://`、`ss://`、`hysteria2://` 节点链接。
 多个订阅/节点地址用空格分隔。
 
 安装完成后会显示：
@@ -94,9 +94,11 @@ sudo bp
 - 显示面板和代理地址
 - 显示面板密钥
 - 用提示输入修改基础设置
+- 订阅/节点管理
 - 更新订阅
 - 更新国内分流规则
 - 更新 MetaCubeXD Web 面板
+- 开启/关闭 BypassProxy Web 管理页
 - 更新本项目脚本
 - 检查配置
 - 网络诊断
@@ -105,12 +107,36 @@ sudo bp
 
 主命令是 `sudo bp`。
 
+订阅/节点管理可以直接在菜单里添加、删除、启用/停用、修改订阅或单条节点链接，不需要手动编辑配置文件。
+如果配置了多个订阅，BypassProxy 会在 MetaCubeXD 里自动生成 `订阅 - 名称` 分组和每组独立自动测速，不需要修改 MetaCubeXD 源码。
+
 几个“更新”的区别：
 
-- 更新订阅：重新拉取订阅/节点地址并生成节点，支持多个地址和 `vmess://`
+- 更新订阅：重新拉取订阅/节点地址并生成节点，支持多个地址和 `vmess://`、`vless://`、`trojan://`、`ss://`、`hysteria2://`；单个订阅失败会继续处理后面的订阅，并优先使用上次成功缓存
 - 更新国内分流规则：检查 `geosite-cn`、`geoip-cn` 是否有新版本，有变化才下载
 - 更新 Web 面板：检查 MetaCubeXD 最新版本，有新版本才更新
 - 更新本项目脚本：检查 GitHub 上这个安装器有没有新提交，有新版本才更新
+
+## Web 管理页
+
+BypassProxy 自带一个更适合小白操作的 Web 管理页，用来管理订阅、查看状态、更新订阅、应用配置、检查配置和重启 sing-box。
+它和 MetaCubeXD 不是同一个东西：MetaCubeXD 主要看节点和流量，BypassProxy Web 管理页主要管本项目。
+
+安全起见，Web 管理页安装后默认关闭。开启方法：
+
+```bash
+sudo bp
+```
+
+选择“Web 管理页”，再选择“开启 Web 管理页”。
+
+默认地址：
+
+```text
+http://旁路由IP:8088/
+```
+
+登录密钥和 MetaCubeXD 面板密钥相同，新安装默认是 `abc123`。
 
 ## Web 面板
 

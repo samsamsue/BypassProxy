@@ -27,6 +27,7 @@ confirm_uninstall() {
 即将卸载 BypassProxy 旁路由代理助手，并清理：
   - bp 菜单命令
   - BypassProxy systemd 转发服务/timer
+  - BypassProxy Web 管理页服务
   - /etc/bypassproxy
   - /etc/sing-box
   - /opt/bypassproxy
@@ -62,8 +63,10 @@ backup_existing_files() {
     /etc/sing-box \
     /opt/bypassproxy \
     /usr/local/share/metacubexd \
+    /usr/local/share/bypassproxy-admin \
     /etc/systemd/system/bypassproxy-forward.service \
     /etc/systemd/system/bypassproxy-forward.timer \
+    /etc/systemd/system/bypassproxy-admin.service \
     /etc/sysctl.d/99-bypassproxy-forward.conf \
     /usr/local/sbin/bypassproxy-forward.sh \
     /usr/local/sbin/bypassproxy-update-subscription.sh \
@@ -105,6 +108,7 @@ remove_table_rule() {
 }
 
 stop_services() {
+  systemctl disable --now bypassproxy-admin.service 2>/dev/null || true
   systemctl disable --now bypassproxy-forward.timer 2>/dev/null || true
   systemctl disable --now bypassproxy-forward.service 2>/dev/null || true
   systemctl disable --now sing-box 2>/dev/null || true
@@ -124,6 +128,7 @@ remove_files() {
   rm -f \
     /etc/systemd/system/bypassproxy-forward.service \
     /etc/systemd/system/bypassproxy-forward.timer \
+    /etc/systemd/system/bypassproxy-admin.service \
     /etc/sysctl.d/99-bypassproxy-forward.conf \
     /usr/local/sbin/bypassproxy-forward.sh \
     /usr/local/sbin/bypassproxy-update-subscription.sh \
@@ -137,7 +142,8 @@ remove_files() {
     /etc/bypassproxy \
     /etc/sing-box \
     /opt/bypassproxy \
-    /usr/local/share/metacubexd
+    /usr/local/share/metacubexd \
+    /usr/local/share/bypassproxy-admin
 
   systemctl daemon-reload 2>/dev/null || true
 }

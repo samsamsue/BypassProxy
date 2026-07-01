@@ -106,6 +106,7 @@ LAN_IP='$(quote_value "$LAN_IP")'
 PROXY_PORT='$(quote_value "$PROXY_PORT")'
 PANEL_PORT='$(quote_value "$PANEL_PORT")'
 PANEL_SECRET='$(quote_value "$PANEL_SECRET")'
+ADMIN_PORT='$(quote_value "$ADMIN_PORT")'
 TUN_NAME='$(quote_value "$TUN_NAME")'
 TUN_ADDRESS='$(quote_value "$TUN_ADDRESS")'
 DNS1='$(quote_value "$DNS1")'
@@ -163,6 +164,7 @@ create_conf_interactively() {
   PROXY_PORT="$(prompt_value "代理端口" "7890")"
   PANEL_PORT="$(prompt_value "面板端口" "9091")"
   PANEL_SECRET="$(prompt_value "面板密钥" "abc123")"
+  ADMIN_PORT="8088"
 
   SUBSCRIBE_URL=""
   while [ -z "$SUBSCRIBE_URL" ] && [ ! -f "$ROOT/secrets/outbounds.json" ]; do
@@ -208,6 +210,15 @@ GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
 GITHUB_DOWNLOAD_PREFIXES="${GITHUB_DOWNLOAD_PREFIXES:-https://gh-proxy.com/ https://ghproxy.net/ https://gh.llkk.cc/}"
 WEBUI_RELEASE_API="${WEBUI_RELEASE_API:-https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest}"
 WEBUI_DOWNLOAD_URL="${WEBUI_DOWNLOAD_URL:-https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz}"
+ADMIN_PORT="${ADMIN_PORT:-8088}"
+ADMIN_WAS_ACTIVE=0
+if systemctl is-active --quiet bypassproxy-admin.service 2>/dev/null; then
+  ADMIN_WAS_ACTIVE=1
+fi
+ADMIN_WAS_ENABLED=0
+if systemctl is-enabled --quiet bypassproxy-admin.service 2>/dev/null; then
+  ADMIN_WAS_ENABLED=1
+fi
 
 download_urls() {
   url="$1"
@@ -298,7 +309,7 @@ cleanup_legacy_names() {
 
 install_singbox
 cleanup_legacy_names
-mkdir -p "$BUILD" /etc/bypassproxy /etc/bypassproxy/rules /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share/metacubexd /opt/bypassproxy
+mkdir -p "$BUILD" /etc/bypassproxy /etc/bypassproxy/rules /etc/bypassproxy/subscriptions.d /etc/bypassproxy/subscription-cache.d /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share/metacubexd /usr/local/share/bypassproxy-admin /opt/bypassproxy
 
 src_conf="$(readlink -f "$CONF" 2>/dev/null || printf "%s" "$CONF")"
 dst_conf="$(readlink -f /etc/bypassproxy/router.conf 2>/dev/null || printf "%s" /etc/bypassproxy/router.conf)"
@@ -316,7 +327,8 @@ if [ -n "$SUBSCRIBE_URL" ] || [ -n "$SUBSCRIBE_URLS" ]; then
   ROUTER_CONF=/etc/bypassproxy/router.conf \
   OUTBOUNDS_JSON=/etc/bypassproxy/outbounds.json \
   SUBSCRIPTION_CACHE=/etc/bypassproxy/subscription.yaml \
-  SUBSCRIPTION_CACHE_DIR=/etc/bypassproxy/subscriptions.d \
+  SUBSCRIPTION_DIR=/etc/bypassproxy/subscriptions.d \
+  SUBSCRIPTION_CACHE_DIR=/etc/bypassproxy/subscription-cache.d \
     /opt/bypassproxy/scripts/update-subscription.sh
 elif [ -f "$ROOT/secrets/outbounds.json" ]; then
   cp "$ROOT/secrets/outbounds.json" /etc/bypassproxy/outbounds.json
@@ -338,6 +350,11 @@ cp "$BUILD/config.json" /etc/sing-box/config.json
 if [ -d "$ROOT/webui" ]; then
   rm -rf /usr/local/share/metacubexd/*
   cp -a "$ROOT/webui/." /usr/local/share/metacubexd/
+fi
+
+if [ -d "$ROOT/admin-ui" ]; then
+  rm -rf /usr/local/share/bypassproxy-admin/*
+  cp -a "$ROOT/admin-ui/." /usr/local/share/bypassproxy-admin/
 fi
 
 cp "$ROOT/scripts/bypassproxy-forward.sh" /usr/local/sbin/bypassproxy-forward.sh
@@ -395,6 +412,25 @@ Unit=bypassproxy-forward.service
 WantedBy=timers.target
 TIMER
 
+cat > /etc/systemd/system/bypassproxy-admin.service <<SERVICE
+[Unit]
+Description=BypassProxy Web 管理页
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=ROUTER_CONF=/etc/bypassproxy/router.conf
+Environment=APP_DIR=/opt/bypassproxy
+Environment=ADMIN_UI_DIR=/usr/local/share/bypassproxy-admin
+ExecStart=/usr/bin/env python3 /opt/bypassproxy/scripts/admin-server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
 systemctl disable --now shellcrash.service 2>/dev/null || true
 pkill -f '/tmp/ShellCrash/CrashCore' 2>/dev/null || true
 
@@ -408,9 +444,15 @@ sing-box check -C /etc/sing-box
 systemctl daemon-reload
 systemctl enable --now sing-box
 systemctl enable --now bypassproxy-forward.timer
+if [ "$ADMIN_WAS_ACTIVE" = "1" ] || [ "$ADMIN_WAS_ENABLED" = "1" ]; then
+  systemctl enable --now bypassproxy-admin.service
+else
+  systemctl disable --now bypassproxy-admin.service 2>/dev/null || true
+fi
 /usr/local/sbin/bypassproxy-forward.sh
 
 echo "安装完成。"
 echo "面板地址：http://${LAN_IP}:${PANEL_PORT}/ui/"
+echo "Web 管理页默认关闭，可运行 sudo bp 开启。"
 echo "显式代理：http://${LAN_IP}:${PROXY_PORT}"
 echo "管理菜单：sudo bp"

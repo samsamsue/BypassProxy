@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+INTERNAL_OUTBOUND_KEYS = {"_subscription", "_subscription_id"}
 
 
 def load_conf(path: Path) -> dict:
@@ -29,28 +30,99 @@ def parse_conf_value(value: str) -> str:
     return value
 
 
+def unique_reserved_tag(base: str, used: set[str]) -> str:
+    tag = base
+    index = 2
+    while tag in used:
+        tag = f"{base} {index}"
+        index += 1
+    used.add(tag)
+    return tag
+
+
+def clean_proxy_outbounds(data: list[dict]) -> list[dict]:
+    reserved = {"auto", "proxy", "direct", "block"}
+    used = set(reserved)
+    cleaned = []
+    for raw in data:
+        if raw.get("type") in {"direct", "block"}:
+            continue
+        item = {key: value for key, value in raw.items() if key not in INTERNAL_OUTBOUND_KEYS}
+        tag = str(item.get("tag") or item.get("server") or item.get("type") or "proxy").strip()
+        item["tag"] = unique_reserved_tag(tag, used)
+        cleaned.append(item)
+    return cleaned
+
+
+def group_tags(original: list[dict], cleaned: list[dict]) -> list[tuple[str, str, list[str]]]:
+    groups = []
+    by_key = {}
+    proxy_original = [item for item in original if item.get("type") not in {"direct", "block"}]
+    for raw, item in zip(proxy_original, cleaned):
+        name = str(raw.get("_subscription") or "").strip()
+        sub_id = str(raw.get("_subscription_id") or name).strip()
+        if not name:
+            continue
+        key = sub_id or name
+        if key not in by_key:
+            by_key[key] = {"name": name, "tags": []}
+            groups.append(key)
+        by_key[key]["tags"].append(item["tag"])
+    return [(key, by_key[key]["name"], by_key[key]["tags"]) for key in groups]
+
+
 def load_outbounds(path: Path) -> str:
     data = json.loads(path.read_text(encoding="utf-8-sig"))
     if isinstance(data, dict):
         data = data.get("outbounds", [])
     if not isinstance(data, list):
         raise SystemExit("outbounds.json 必须是 JSON 列表，或包含 outbounds 字段的对象")
-    tags = [item["tag"] for item in data if item.get("type") not in {"direct", "block"}]
+    proxies = clean_proxy_outbounds(data)
+    tags = [item["tag"] for item in proxies]
     if not tags:
         raise SystemExit("outbounds.json has no proxy outbounds")
-    generated = [
+    generated = []
+    generated_used = set(tags)
+    auto_tag = unique_reserved_tag("auto", generated_used)
+    generated.append(
         {
             "type": "urltest",
-            "tag": "auto",
+            "tag": auto_tag,
             "outbounds": tags,
             "url": "https://www.gstatic.com/generate_204",
             "interval": "10m",
             "tolerance": 50,
-        },
-        {"type": "selector", "tag": "proxy", "outbounds": ["auto"] + tags, "default": "auto"},
+        }
+    )
+    subscription_selectors = []
+    for _sub_id, name, sub_tags in group_tags(data, proxies):
+        group_auto_tag = unique_reserved_tag(f"自动测速 - {name}", generated_used)
+        group_selector_tag = unique_reserved_tag(f"订阅 - {name}", generated_used)
+        generated.append(
+            {
+                "type": "urltest",
+                "tag": group_auto_tag,
+                "outbounds": sub_tags,
+                "url": "https://www.gstatic.com/generate_204",
+                "interval": "10m",
+                "tolerance": 50,
+            }
+        )
+        generated.append(
+            {
+                "type": "selector",
+                "tag": group_selector_tag,
+                "outbounds": [group_auto_tag] + sub_tags,
+                "default": group_auto_tag,
+            }
+        )
+        subscription_selectors.append(group_selector_tag)
+    generated = [
+        *generated,
+        {"type": "selector", "tag": "proxy", "outbounds": [auto_tag] + subscription_selectors + tags, "default": auto_tag},
         {"type": "direct", "tag": "direct"},
         {"type": "block", "tag": "block"},
-    ] + data
+    ] + proxies
     return ",\n    ".join(json.dumps(item, ensure_ascii=False, indent=4) for item in generated)
 
 
