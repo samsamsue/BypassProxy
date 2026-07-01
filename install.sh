@@ -272,34 +272,34 @@ ensure_python_yaml() {
 }
 
 install_singbox
-mkdir -p "$BUILD" /etc/home-router-singbox /etc/home-router-singbox/rules /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share/metacubexd /opt/home-router-singbox
+mkdir -p "$BUILD" /etc/bypassproxy /etc/bypassproxy/rules /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share/metacubexd /opt/bypassproxy
 
-cp "$CONF" /etc/home-router-singbox/router.conf
-cp -a "$ROOT/scripts" "$ROOT/templates" /opt/home-router-singbox/
-chmod 0755 /opt/home-router-singbox/scripts/*.sh /opt/home-router-singbox/scripts/*.py
-if [ -f "$ROOT/.home-router-version" ]; then
-  cp "$ROOT/.home-router-version" /opt/home-router-singbox/.home-router-version
+cp "$CONF" /etc/bypassproxy/router.conf
+cp -a "$ROOT/scripts" "$ROOT/templates" /opt/bypassproxy/
+chmod 0755 /opt/bypassproxy/scripts/*.sh /opt/bypassproxy/scripts/*.py
+if [ -f "$ROOT/.bypassproxy-version" ]; then
+  cp "$ROOT/.bypassproxy-version" /opt/bypassproxy/.bypassproxy-version
 fi
 
 ensure_python_yaml
 if [ -n "$SUBSCRIBE_URL" ]; then
-  ROUTER_CONF=/etc/home-router-singbox/router.conf \
-  OUTBOUNDS_JSON=/etc/home-router-singbox/outbounds.json \
-  SUBSCRIPTION_CACHE=/etc/home-router-singbox/subscription.yaml \
-    /opt/home-router-singbox/scripts/update-subscription.sh
+  ROUTER_CONF=/etc/bypassproxy/router.conf \
+  OUTBOUNDS_JSON=/etc/bypassproxy/outbounds.json \
+  SUBSCRIPTION_CACHE=/etc/bypassproxy/subscription.yaml \
+    /opt/bypassproxy/scripts/update-subscription.sh
 elif [ -f "$ROOT/secrets/outbounds.json" ]; then
-  cp "$ROOT/secrets/outbounds.json" /etc/home-router-singbox/outbounds.json
+  cp "$ROOT/secrets/outbounds.json" /etc/bypassproxy/outbounds.json
 else
   echo "缺少代理节点。请在 router.conf 设置 SUBSCRIBE_URL，或创建 secrets/outbounds.json。" >&2
   exit 1
 fi
 
-ROUTER_CONF=/etc/home-router-singbox/router.conf \
-RULE_DIR=/etc/home-router-singbox/rules \
-  /opt/home-router-singbox/scripts/update-rulesets.sh
+ROUTER_CONF=/etc/bypassproxy/router.conf \
+RULE_DIR=/etc/bypassproxy/rules \
+  /opt/bypassproxy/scripts/update-rulesets.sh
 
-ROUTER_CONF=/etc/home-router-singbox/router.conf \
-OUTBOUNDS_JSON=/etc/home-router-singbox/outbounds.json \
+ROUTER_CONF=/etc/bypassproxy/router.conf \
+OUTBOUNDS_JSON=/etc/bypassproxy/outbounds.json \
 OUTPUT="$BUILD/config.json" \
   python3 "$ROOT/scripts/render-config.py"
 cp "$BUILD/config.json" /etc/sing-box/config.json
@@ -309,25 +309,24 @@ if [ -d "$ROOT/webui" ]; then
   cp -a "$ROOT/webui/." /usr/local/share/metacubexd/
 fi
 
-cp "$ROOT/scripts/home-lan-bypass-forward.sh" /usr/local/sbin/home-lan-bypass-forward.sh
-chmod 0755 /usr/local/sbin/home-lan-bypass-forward.sh
-cp "$ROOT/scripts/update-subscription.sh" /usr/local/sbin/home-router-update-subscription.sh
-chmod 0755 /usr/local/sbin/home-router-update-subscription.sh
-cp "$ROOT/scripts/update-webui.sh" /usr/local/sbin/home-router-update-webui.sh
-chmod 0755 /usr/local/sbin/home-router-update-webui.sh
-cp "$ROOT/scripts/update-rulesets.sh" /usr/local/sbin/home-router-update-rulesets.sh
-chmod 0755 /usr/local/sbin/home-router-update-rulesets.sh
-cp "$ROOT/scripts/update-core.sh" /usr/local/sbin/home-router-update-core.sh
-chmod 0755 /usr/local/sbin/home-router-update-core.sh
-cp "$ROOT/scripts/diagnose-network.sh" /usr/local/sbin/home-router-diagnose-network.sh
-chmod 0755 /usr/local/sbin/home-router-diagnose-network.sh
-cp "$ROOT/scripts/uninstall.sh" /usr/local/sbin/home-router-uninstall.sh
-chmod 0755 /usr/local/sbin/home-router-uninstall.sh
-cp "$ROOT/scripts/sc-menu.sh" /usr/local/bin/sb
-chmod 0755 /usr/local/bin/sb
-ln -sf /usr/local/bin/sb /usr/local/bin/sc
+cp "$ROOT/scripts/bypassproxy-forward.sh" /usr/local/sbin/bypassproxy-forward.sh
+chmod 0755 /usr/local/sbin/bypassproxy-forward.sh
+cp "$ROOT/scripts/update-subscription.sh" /usr/local/sbin/bypassproxy-update-subscription.sh
+chmod 0755 /usr/local/sbin/bypassproxy-update-subscription.sh
+cp "$ROOT/scripts/update-webui.sh" /usr/local/sbin/bypassproxy-update-webui.sh
+chmod 0755 /usr/local/sbin/bypassproxy-update-webui.sh
+cp "$ROOT/scripts/update-rulesets.sh" /usr/local/sbin/bypassproxy-update-rulesets.sh
+chmod 0755 /usr/local/sbin/bypassproxy-update-rulesets.sh
+cp "$ROOT/scripts/update-core.sh" /usr/local/sbin/bypassproxy-update-core.sh
+chmod 0755 /usr/local/sbin/bypassproxy-update-core.sh
+cp "$ROOT/scripts/diagnose-network.sh" /usr/local/sbin/bypassproxy-diagnose-network.sh
+chmod 0755 /usr/local/sbin/bypassproxy-diagnose-network.sh
+cp "$ROOT/scripts/uninstall.sh" /usr/local/sbin/bypassproxy-uninstall.sh
+chmod 0755 /usr/local/sbin/bypassproxy-uninstall.sh
+cp "$ROOT/scripts/bp-menu.sh" /usr/local/bin/bp
+chmod 0755 /usr/local/bin/bp
 
-cat > /etc/sysctl.d/99-home-lan-bypass-forward.conf <<SYSCTL
+cat > /etc/sysctl.d/99-bypassproxy-forward.conf <<SYSCTL
 net.ipv4.ip_forward=1
 net.ipv4.conf.all.send_redirects=0
 net.ipv4.conf.default.send_redirects=0
@@ -336,30 +335,30 @@ net.ipv4.conf.all.rp_filter=0
 net.ipv4.conf.${LAN_IF}.rp_filter=0
 SYSCTL
 
-cat > /etc/systemd/system/home-lan-bypass-forward.service <<SERVICE
+cat > /etc/systemd/system/bypassproxy-forward.service <<SERVICE
 [Unit]
-Description=Home sing-box 旁路由同网卡转发
+Description=BypassProxy 旁路由同网卡转发
 After=network-online.target sing-box.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-Environment=ROUTER_CONF=/etc/home-router-singbox/router.conf
-ExecStart=/usr/local/sbin/home-lan-bypass-forward.sh
+Environment=ROUTER_CONF=/etc/bypassproxy/router.conf
+ExecStart=/usr/local/sbin/bypassproxy-forward.sh
 
 [Install]
 WantedBy=multi-user.target
 SERVICE
 
-cat > /etc/systemd/system/home-lan-bypass-forward.timer <<TIMER
+cat > /etc/systemd/system/bypassproxy-forward.timer <<TIMER
 [Unit]
-Description=刷新 Home sing-box 旁路由转发规则
+Description=刷新 BypassProxy 旁路由转发规则
 
 [Timer]
 OnBootSec=30s
 OnUnitActiveSec=1min
 AccuracySec=10s
-Unit=home-lan-bypass-forward.service
+Unit=bypassproxy-forward.service
 
 [Install]
 WantedBy=timers.target
@@ -377,10 +376,10 @@ DNS
 sing-box check -C /etc/sing-box
 systemctl daemon-reload
 systemctl enable --now sing-box
-systemctl enable --now home-lan-bypass-forward.timer
-/usr/local/sbin/home-lan-bypass-forward.sh
+systemctl enable --now bypassproxy-forward.timer
+/usr/local/sbin/bypassproxy-forward.sh
 
 echo "安装完成。"
 echo "面板地址：http://${LAN_IP}:${PANEL_PORT}/ui/"
 echo "显式代理：http://${LAN_IP}:${PROXY_PORT}"
-echo "管理菜单：sudo sb"
+echo "管理菜单：sudo bp"

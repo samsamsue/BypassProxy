@@ -1,13 +1,13 @@
-# Home sing-box Router
+# BypassProxy
 
-把一台 Debian/Ubuntu 服务器变成家用 sing-box 旁路由。
+旁路由代理助手。把一台 Debian/Ubuntu 设备变成透明分流代理旁路由：国内直连，国外走订阅节点，手机只需要把网关指向它。
 
 适合这种用法：
 
 - 手机把网关设为旁路由 IP 后分流上网
 - 游戏、国内 App 尽量直连
 - 国外流量走订阅节点
-- 用 `sb` 菜单管理，不手改配置文件
+- 用 `bp` 菜单管理，不手改配置文件
 
 适用范围：
 
@@ -28,7 +28,7 @@
 在服务器上执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/samsamsue/home_singbox_router/main/bootstrap.sh | sudo sh
+curl -fsSL https://raw.githubusercontent.com/samsamsue/BypassProxy/main/bootstrap.sh | sudo sh
 ```
 
 如果 GitHub 访问慢，脚本启动后会自动尝试几个常见 GitHub 下载加速前缀。
@@ -37,13 +37,13 @@ curl -fsSL https://raw.githubusercontent.com/samsamsue/home_singbox_router/main/
 如果连上面这条命令里的 `raw.githubusercontent.com` 都打不开，需要先用你自己的代理或 raw 加速地址把 `bootstrap.sh` 拉下来。例如：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/samsamsue/home_singbox_router/main/bootstrap.sh | sudo env DOWNLOAD_PROXY=http://127.0.0.1:7890 sh
+curl -fsSL https://raw.githubusercontent.com/samsamsue/BypassProxy/main/bootstrap.sh | sudo env DOWNLOAD_PROXY=http://127.0.0.1:7890 sh
 ```
 
 也可以手动指定 GitHub 下载加速前缀：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/samsamsue/home_singbox_router/main/bootstrap.sh | sudo env GITHUB_DOWNLOAD_PREFIX=https://你的加速地址/ sh
+curl -fsSL https://raw.githubusercontent.com/samsamsue/BypassProxy/main/bootstrap.sh | sudo env GITHUB_DOWNLOAD_PREFIX=https://你的加速地址/ sh
 ```
 
 脚本会提示输入：
@@ -63,7 +63,7 @@ DNS 默认使用 `223.5.5.5` 和 `119.29.29.29`，安装时不用填。
 ```text
 Panel: http://旁路由IP:9091/ui/
 Proxy: http://旁路由IP:7890
-Menu: sudo sb
+Menu: sudo bp
 ```
 
 ## 手机怎么设置
@@ -82,7 +82,7 @@ DNS：223.5.5.5 或 119.29.29.29
 安装后运行：
 
 ```bash
-sudo sb
+sudo bp
 ```
 
 菜单功能：
@@ -102,7 +102,7 @@ sudo sb
 - 重新应用旁路由转发/NAT
 - 干净卸载
 
-为了兼容习惯，也会创建 `sudo sc`，但推荐记 `sudo sb`。
+主命令是 `sudo bp`。
 
 几个“更新”的区别：
 
@@ -126,16 +126,16 @@ http://旁路由IP:9091
 ```
 
 密钥就是安装时设置的面板密钥。
-新安装默认是 `abc123`，也可以在 `sudo sb` 里修改。普通菜单不会直接显示明文密钥，需要选择“显示面板密钥”并确认后才显示。
+新安装默认是 `abc123`，也可以在 `sudo bp` 里修改。普通菜单不会直接显示明文密钥，需要选择“显示面板密钥”并确认后才显示。
 
-如果通过 ZeroTier 远程管理，`sudo sb` 会自动显示 ZeroTier 面板地址。
+如果通过 ZeroTier 远程管理，`sudo bp` 会自动显示 ZeroTier 面板地址。
 
 ## 手机设网关后不能上网
 
 先在旁路由服务器运行：
 
 ```bash
-sudo sb
+sudo bp
 ```
 
 然后按这个顺序处理：
@@ -167,7 +167,7 @@ curl.exe https://api.ipify.org --proxy http://旁路由IP:7890
 运行：
 
 ```bash
-sudo sb
+sudo bp
 ```
 
 选择“干净卸载”，按提示输入：
@@ -179,13 +179,13 @@ UNINSTALL
 卸载前会自动备份到：
 
 ```text
-/root/home-router-singbox-uninstall-backup-时间.tar.gz
+/root/bypassproxy-uninstall-backup-时间.tar.gz
 ```
 
 会清理：
 
-- `sb`/`sc` 命令
-- home-router systemd 服务和 timer
+- `bp` 命令
+- BypassProxy systemd 服务和 timer
 - sing-box 配置
 - MetaCubeXD 面板文件
 - 本脚本创建的旁路由转发/NAT 规则
@@ -204,7 +204,7 @@ sudo ./install.sh
 配置文件会被安装到：
 
 ```text
-/etc/home-router-singbox/router.conf
+/etc/bypassproxy/router.conf
 ```
 
 真实订阅地址、面板密钥、节点文件不要提交到公开 GitHub。
@@ -212,7 +212,7 @@ sudo ./install.sh
 ## 常用命令
 
 ```bash
-sudo sb
+sudo bp
 systemctl status sing-box
 journalctl -u sing-box -f
 sing-box check -C /etc/sing-box

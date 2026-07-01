@@ -1,10 +1,10 @@
 #!/bin/sh
 set -eu
 
-APP_DIR="${APP_DIR:-/opt/home-router-singbox}"
-CONF="${ROUTER_CONF:-/etc/home-router-singbox/router.conf}"
-OUTBOUNDS_JSON="${OUTBOUNDS_JSON:-/etc/home-router-singbox/outbounds.json}"
-SUBSCRIPTION_CACHE="${SUBSCRIPTION_CACHE:-/etc/home-router-singbox/subscription.yaml}"
+APP_DIR="${APP_DIR:-/opt/bypassproxy}"
+CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
+OUTBOUNDS_JSON="${OUTBOUNDS_JSON:-/etc/bypassproxy/outbounds.json}"
+SUBSCRIPTION_CACHE="${SUBSCRIPTION_CACHE:-/etc/bypassproxy/subscription.yaml}"
 
 if [ ! -f "$CONF" ]; then
   echo "缺少配置文件：$CONF" >&2
@@ -19,7 +19,7 @@ SUBSCRIBE_USER_AGENT="${SUBSCRIBE_USER_AGENT:-clash.meta}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
 
 if [ -z "$SUBSCRIBE_URL" ]; then
-  echo "订阅地址为空。请运行 sudo sb 修改配置，或编辑 router.conf。" >&2
+  echo "订阅地址为空。请运行 sudo bp 修改配置，或编辑 router.conf。" >&2
   exit 1
 fi
 

@@ -1,9 +1,9 @@
 #!/bin/sh
 set -u
 
-CONF="${ROUTER_CONF:-/etc/home-router-singbox/router.conf}"
+CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 CONFIG_JSON="${CONFIG_JSON:-/etc/sing-box/config.json}"
-RULE_DIR="${RULE_DIR:-/etc/home-router-singbox/rules}"
+RULE_DIR="${RULE_DIR:-/etc/bypassproxy/rules}"
 
 if [ -f "$CONF" ]; then
   # shellcheck disable=SC1090
@@ -180,13 +180,13 @@ show_title "分流规则"
 if [ -s "$RULE_DIR/geosite-cn.srs" ]; then
   ok "geosite-cn 规则存在"
 else
-  warn "缺少 geosite-cn 规则，请在 sb 菜单更新国内分流规则"
+  warn "缺少 geosite-cn 规则，请在 bp 菜单更新国内分流规则"
 fi
 
 if [ -s "$RULE_DIR/geoip-cn.srs" ]; then
   ok "geoip-cn 规则存在"
 else
-  warn "缺少 geoip-cn 规则，请在 sb 菜单更新国内分流规则"
+  warn "缺少 geoip-cn 规则，请在 bp 菜单更新国内分流规则"
 fi
 
 if [ -f "$CONFIG_JSON" ] && grep -q '"rule_set": "geosite-cn"' "$CONFIG_JSON"; then

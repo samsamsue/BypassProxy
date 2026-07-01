@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-CONF="${ROUTER_CONF:-/etc/home-router-singbox/router.conf}"
+CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 WEBUI_DIR="${WEBUI_DIR:-/usr/local/share/metacubexd}"
 WEBUI_RELEASE_API="${WEBUI_RELEASE_API:-https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest}"
 WEBUI_DOWNLOAD_URL="${WEBUI_DOWNLOAD_URL:-https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz}"
@@ -95,7 +95,7 @@ for asset in data.get("assets", []):
 PY
 }
 
-tmp="$(mktemp -d /tmp/home-router-webui.XXXXXX)"
+tmp="$(mktemp -d /tmp/bypassproxy-webui.XXXXXX)"
 cleanup() {
   rm -rf "$tmp"
 }
@@ -117,8 +117,8 @@ if [ -z "$latest_tag" ]; then
 fi
 
 current_tag=""
-if [ -f "$WEBUI_DIR/.home-router-webui-version" ]; then
-  current_tag="$(cat "$WEBUI_DIR/.home-router-webui-version" 2>/dev/null || true)"
+if [ -f "$WEBUI_DIR/.bypassproxy-webui-version" ]; then
+  current_tag="$(cat "$WEBUI_DIR/.bypassproxy-webui-version" 2>/dev/null || true)"
 fi
 
 if [ -n "$latest_tag" ] && [ "$latest_tag" = "$current_tag" ] && [ "${FORCE_WEBUI_UPDATE:-0}" != "1" ]; then
@@ -157,7 +157,7 @@ fi
 
 cp -R "$src/." "$install_dir/"
 if [ -n "$latest_tag" ]; then
-  printf "%s\n" "$latest_tag" > "$install_dir/.home-router-webui-version"
+  printf "%s\n" "$latest_tag" > "$install_dir/.bypassproxy-webui-version"
 fi
 chmod -R a+rX "$install_dir"
 

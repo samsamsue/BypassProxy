@@ -1,11 +1,11 @@
 #!/bin/sh
 set -eu
 
-CONF="${ROUTER_CONF:-/etc/home-router-singbox/router.conf}"
+CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 BACKUP_ROOT="${BACKUP_ROOT:-/root}"
 
 if [ "$(id -u)" != "0" ]; then
-  echo "请用 root 运行：sudo home-router-uninstall.sh" >&2
+  echo "请用 root 运行：sudo bypassproxy-uninstall.sh" >&2
   exit 1
 fi
 
@@ -24,12 +24,12 @@ confirm_uninstall() {
   fi
 
   cat <<EOF
-即将卸载 Home sing-box 旁路由，并清理：
-  - sb/sc 菜单命令
-  - home-router systemd 转发服务/timer
-  - /etc/home-router-singbox
+即将卸载 BypassProxy 旁路由代理助手，并清理：
+  - bp 菜单命令
+  - BypassProxy systemd 转发服务/timer
+  - /etc/bypassproxy
   - /etc/sing-box
-  - /opt/home-router-singbox
+  - /opt/bypassproxy
   - /usr/local/share/metacubexd
   - 为 ${LAN_IF} ${LAN_NET} 创建的转发/NAT 规则
 
@@ -53,27 +53,26 @@ EOF
 
 backup_existing_files() {
   stamp="$(date +%Y%m%d-%H%M%S)"
-  backup="${BACKUP_ROOT}/home-router-singbox-uninstall-backup-${stamp}.tar.gz"
-  list="/tmp/home-router-singbox-uninstall-backup.$$"
+  backup="${BACKUP_ROOT}/bypassproxy-uninstall-backup-${stamp}.tar.gz"
+  list="/tmp/bypassproxy-uninstall-backup.$$"
   : > "$list"
 
   for path in \
-    /etc/home-router-singbox \
+    /etc/bypassproxy \
     /etc/sing-box \
-    /opt/home-router-singbox \
+    /opt/bypassproxy \
     /usr/local/share/metacubexd \
-    /etc/systemd/system/home-lan-bypass-forward.service \
-    /etc/systemd/system/home-lan-bypass-forward.timer \
-    /etc/sysctl.d/99-home-lan-bypass-forward.conf \
-    /usr/local/sbin/home-lan-bypass-forward.sh \
-    /usr/local/sbin/home-router-update-subscription.sh \
-    /usr/local/sbin/home-router-update-webui.sh \
-    /usr/local/sbin/home-router-update-rulesets.sh \
-    /usr/local/sbin/home-router-update-core.sh \
-    /usr/local/sbin/home-router-diagnose-network.sh \
-    /usr/local/sbin/home-router-uninstall.sh \
-    /usr/local/bin/sb \
-    /usr/local/bin/sc
+    /etc/systemd/system/bypassproxy-forward.service \
+    /etc/systemd/system/bypassproxy-forward.timer \
+    /etc/sysctl.d/99-bypassproxy-forward.conf \
+    /usr/local/sbin/bypassproxy-forward.sh \
+    /usr/local/sbin/bypassproxy-update-subscription.sh \
+    /usr/local/sbin/bypassproxy-update-webui.sh \
+    /usr/local/sbin/bypassproxy-update-rulesets.sh \
+    /usr/local/sbin/bypassproxy-update-core.sh \
+    /usr/local/sbin/bypassproxy-diagnose-network.sh \
+    /usr/local/sbin/bypassproxy-uninstall.sh \
+    /usr/local/bin/bp
   do
     if [ -e "$path" ] || [ -L "$path" ]; then
       printf "%s\n" "${path#/}" >> "$list"
@@ -106,8 +105,8 @@ remove_table_rule() {
 }
 
 stop_services() {
-  systemctl disable --now home-lan-bypass-forward.timer 2>/dev/null || true
-  systemctl disable --now home-lan-bypass-forward.service 2>/dev/null || true
+  systemctl disable --now bypassproxy-forward.timer 2>/dev/null || true
+  systemctl disable --now bypassproxy-forward.service 2>/dev/null || true
   systemctl disable --now sing-box 2>/dev/null || true
   pkill -f 'sing-box' 2>/dev/null || true
 }
@@ -118,28 +117,26 @@ remove_firewall_rules() {
   remove_filter_rule FORWARD -i "$TUN_NAME" -o "$LAN_IF" -d "$LAN_NET" -j ACCEPT
   remove_table_rule nat POSTROUTING -s "$LAN_NET" -o "$LAN_IF" -j MASQUERADE
 
-  # 兼容清理旧版本和旁路由转发脚本可能创建的规则。
   remove_table_rule mangle PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 443 -j RETURN
 }
 
 remove_files() {
   rm -f \
-    /etc/systemd/system/home-lan-bypass-forward.service \
-    /etc/systemd/system/home-lan-bypass-forward.timer \
-    /etc/sysctl.d/99-home-lan-bypass-forward.conf \
-    /usr/local/sbin/home-lan-bypass-forward.sh \
-    /usr/local/sbin/home-router-update-subscription.sh \
-    /usr/local/sbin/home-router-update-webui.sh \
-    /usr/local/sbin/home-router-update-rulesets.sh \
-    /usr/local/sbin/home-router-update-core.sh \
-    /usr/local/sbin/home-router-diagnose-network.sh \
-    /usr/local/bin/sb \
-    /usr/local/bin/sc
+    /etc/systemd/system/bypassproxy-forward.service \
+    /etc/systemd/system/bypassproxy-forward.timer \
+    /etc/sysctl.d/99-bypassproxy-forward.conf \
+    /usr/local/sbin/bypassproxy-forward.sh \
+    /usr/local/sbin/bypassproxy-update-subscription.sh \
+    /usr/local/sbin/bypassproxy-update-webui.sh \
+    /usr/local/sbin/bypassproxy-update-rulesets.sh \
+    /usr/local/sbin/bypassproxy-update-core.sh \
+    /usr/local/sbin/bypassproxy-diagnose-network.sh \
+    /usr/local/bin/bp
 
   rm -rf \
-    /etc/home-router-singbox \
+    /etc/bypassproxy \
     /etc/sing-box \
-    /opt/home-router-singbox \
+    /opt/bypassproxy \
     /usr/local/share/metacubexd
 
   systemctl daemon-reload 2>/dev/null || true
@@ -173,7 +170,7 @@ remove_firewall_rules
 remove_files
 restore_resolv_conf
 purge_singbox_package
-rm -f /usr/local/sbin/home-router-uninstall.sh
+rm -f /usr/local/sbin/bypassproxy-uninstall.sh
 
-echo "Home sing-box 旁路由已卸载。"
+echo "BypassProxy 已卸载。"
 echo "如果手机曾经把它设为网关，请把手机网关/DNS 改回主路由。"

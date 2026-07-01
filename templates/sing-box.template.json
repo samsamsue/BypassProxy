@@ -112,13 +112,13 @@
         "type": "local",
         "tag": "geosite-cn",
         "format": "binary",
-        "path": "/etc/home-router-singbox/rules/geosite-cn.srs"
+        "path": "/etc/bypassproxy/rules/geosite-cn.srs"
       },
       {
         "type": "local",
         "tag": "geoip-cn",
         "format": "binary",
-        "path": "/etc/home-router-singbox/rules/geoip-cn.srs"
+        "path": "/etc/bypassproxy/rules/geoip-cn.srs"
       }
     ],
     "rules": [

@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-REPO="${REPO:-samsamsue/home_singbox_router}"
+REPO="${REPO:-samsamsue/BypassProxy}"
 BRANCH="${BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/home-router-singbox-installer}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/bypassproxy-installer}"
 ARCHIVE_URL="${ARCHIVE_URL:-https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz}"
 REMOTE_SHA_URL="${REMOTE_SHA_URL:-https://api.github.com/repos/${REPO}/commits/${BRANCH}}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
@@ -75,7 +75,7 @@ download_once() {
 }
 
 ensure_downloader
-tmp="$(mktemp -d /tmp/home-router-bootstrap.XXXXXX)"
+tmp="$(mktemp -d /tmp/bypassproxy-bootstrap.XXXXXX)"
 cleanup() {
   rm -rf "$tmp"
 }
@@ -107,7 +107,7 @@ fi
 cp -R "$src/." "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
 if [ -n "$remote_version" ]; then
-  printf "%s\n" "$remote_version" > "$INSTALL_DIR/.home-router-version"
+  printf "%s\n" "$remote_version" > "$INSTALL_DIR/.bypassproxy-version"
 fi
 
 echo "安装器已下载到 $INSTALL_DIR"

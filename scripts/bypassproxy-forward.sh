@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-CONF="${ROUTER_CONF:-/etc/home-router-singbox/router.conf}"
+CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 if [ -f "$CONF" ]; then
   # shellcheck disable=SC1090
   . "$CONF"

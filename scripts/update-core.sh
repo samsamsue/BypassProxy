@@ -1,18 +1,18 @@
 #!/bin/sh
 set -eu
 
-REPO="${REPO:-samsamsue/home_singbox_router}"
+REPO="${REPO:-samsamsue/BypassProxy}"
 BRANCH="${BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/home-router-singbox-installer}"
-APP_DIR="${APP_DIR:-/opt/home-router-singbox}"
-CONF="${ROUTER_CONF:-/etc/home-router-singbox/router.conf}"
+INSTALL_DIR="${INSTALL_DIR:-/opt/bypassproxy-installer}"
+APP_DIR="${APP_DIR:-/opt/bypassproxy}"
+CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 ARCHIVE_URL="${ARCHIVE_URL:-https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz}"
-VERSION_FILE="${VERSION_FILE:-$INSTALL_DIR/.home-router-version}"
-APP_VERSION_FILE="${APP_VERSION_FILE:-$APP_DIR/.home-router-version}"
+VERSION_FILE="${VERSION_FILE:-$INSTALL_DIR/.bypassproxy-version}"
+APP_VERSION_FILE="${APP_VERSION_FILE:-$APP_DIR/.bypassproxy-version}"
 REMOTE_SHA_URL="${REMOTE_SHA_URL:-https://api.github.com/repos/${REPO}/commits/${BRANCH}}"
 
 if [ "$(id -u)" != "0" ]; then
-  echo "请用 root 运行：sudo home-router-update-core.sh" >&2
+  echo "请用 root 运行：sudo bypassproxy-update-core.sh" >&2
   exit 1
 fi
 
@@ -124,7 +124,7 @@ PY
 }
 
 ensure_downloader
-tmp="$(mktemp -d /tmp/home-router-update.XXXXXX)"
+tmp="$(mktemp -d /tmp/bypassproxy-update.XXXXXX)"
 cleanup() {
   rm -rf "$tmp"
 }

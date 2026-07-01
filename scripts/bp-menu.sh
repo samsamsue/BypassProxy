@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-APP_DIR="${APP_DIR:-/opt/home-router-singbox}"
-CONF="${ROUTER_CONF:-/etc/home-router-singbox/router.conf}"
+APP_DIR="${APP_DIR:-/opt/bypassproxy}"
+CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 CONFIG_JSON="/etc/sing-box/config.json"
 
 pause() {
@@ -13,7 +13,7 @@ pause() {
 
 need_root() {
   if [ "$(id -u)" != "0" ]; then
-    echo "请用 root 运行：sudo sb" >&2
+    echo "请用 root 运行：sudo bp" >&2
     exit 1
   fi
 }
@@ -77,12 +77,12 @@ secret_status() {
 }
 
 update_rulesets() {
-  if [ -x /usr/local/sbin/home-router-update-rulesets.sh ]; then
-    ROUTER_CONF="$CONF" RULE_DIR=/etc/home-router-singbox/rules /usr/local/sbin/home-router-update-rulesets.sh
+  if [ -x /usr/local/sbin/bypassproxy-update-rulesets.sh ]; then
+    ROUTER_CONF="$CONF" RULE_DIR=/etc/bypassproxy/rules /usr/local/sbin/bypassproxy-update-rulesets.sh
     return
   fi
   if [ -x "$APP_DIR/scripts/update-rulesets.sh" ]; then
-    ROUTER_CONF="$CONF" RULE_DIR=/etc/home-router-singbox/rules "$APP_DIR/scripts/update-rulesets.sh"
+    ROUTER_CONF="$CONF" RULE_DIR=/etc/bypassproxy/rules "$APP_DIR/scripts/update-rulesets.sh"
     return
   fi
   echo "缺少分流规则更新脚本。" >&2
@@ -95,11 +95,11 @@ apply_config() {
     return 1
   fi
   update_rulesets
-  ROUTER_CONF="$CONF" OUTBOUNDS_JSON=/etc/home-router-singbox/outbounds.json OUTPUT="$CONFIG_JSON" python3 "$APP_DIR/scripts/render-config.py"
+  ROUTER_CONF="$CONF" OUTBOUNDS_JSON=/etc/bypassproxy/outbounds.json OUTPUT="$CONFIG_JSON" python3 "$APP_DIR/scripts/render-config.py"
   sing-box check -C /etc/sing-box
   systemctl restart sing-box
-  systemctl restart home-lan-bypass-forward.timer 2>/dev/null || true
-  /usr/local/sbin/home-lan-bypass-forward.sh 2>/dev/null || true
+  systemctl restart bypassproxy-forward.timer 2>/dev/null || true
+  /usr/local/sbin/bypassproxy-forward.sh 2>/dev/null || true
 }
 
 check_config() {
@@ -113,25 +113,25 @@ check_config() {
 }
 
 update_subscription() {
-  if [ ! -x /usr/local/sbin/home-router-update-subscription.sh ]; then
-    echo "缺少订阅更新脚本：/usr/local/sbin/home-router-update-subscription.sh" >&2
+  if [ ! -x /usr/local/sbin/bypassproxy-update-subscription.sh ]; then
+    echo "缺少订阅更新脚本：/usr/local/sbin/bypassproxy-update-subscription.sh" >&2
     return 1
   fi
-  ROUTER_CONF="$CONF" /usr/local/sbin/home-router-update-subscription.sh
+  ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-update-subscription.sh
   apply_config
 }
 
 update_webui() {
-  if [ ! -x /usr/local/sbin/home-router-update-webui.sh ]; then
-    echo "缺少 Web 面板更新脚本：/usr/local/sbin/home-router-update-webui.sh" >&2
+  if [ ! -x /usr/local/sbin/bypassproxy-update-webui.sh ]; then
+    echo "缺少 Web 面板更新脚本：/usr/local/sbin/bypassproxy-update-webui.sh" >&2
     return 1
   fi
-  ROUTER_CONF="$CONF" /usr/local/sbin/home-router-update-webui.sh
+  ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-update-webui.sh
 }
 
 update_core() {
-  if [ -x /usr/local/sbin/home-router-update-core.sh ]; then
-    ROUTER_CONF="$CONF" /usr/local/sbin/home-router-update-core.sh
+  if [ -x /usr/local/sbin/bypassproxy-update-core.sh ]; then
+    ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-update-core.sh
     return
   fi
   if [ -x "$APP_DIR/scripts/update-core.sh" ]; then
@@ -143,8 +143,8 @@ update_core() {
 }
 
 diagnose_network() {
-  if [ -x /usr/local/sbin/home-router-diagnose-network.sh ]; then
-    ROUTER_CONF="$CONF" /usr/local/sbin/home-router-diagnose-network.sh
+  if [ -x /usr/local/sbin/bypassproxy-diagnose-network.sh ]; then
+    ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-diagnose-network.sh
     return
   fi
   if [ -x "$APP_DIR/scripts/diagnose-network.sh" ]; then
@@ -156,11 +156,11 @@ diagnose_network() {
 }
 
 uninstall_router() {
-  if [ ! -x /usr/local/sbin/home-router-uninstall.sh ]; then
-    echo "缺少卸载脚本：/usr/local/sbin/home-router-uninstall.sh" >&2
+  if [ ! -x /usr/local/sbin/bypassproxy-uninstall.sh ]; then
+    echo "缺少卸载脚本：/usr/local/sbin/bypassproxy-uninstall.sh" >&2
     return 1
   fi
-  /usr/local/sbin/home-router-uninstall.sh
+  /usr/local/sbin/bypassproxy-uninstall.sh
 }
 
 show_status() {
@@ -254,8 +254,8 @@ main_menu() {
     clear 2>/dev/null || true
     load_conf
     cat <<EOF
-Home sing-box 旁路由 (sb)
-========================
+BypassProxy 旁路由代理助手 (bp)
+==============================
 1) 查看状态
 2) 重启 sing-box
 3) 查看日志
@@ -287,7 +287,7 @@ EOF
       10) update_core; pause ;;
       11) check_config; pause ;;
       12) diagnose_network; pause ;;
-      13) /usr/local/sbin/home-lan-bypass-forward.sh; echo "已应用。"; pause ;;
+      13) /usr/local/sbin/bypassproxy-forward.sh; echo "已应用。"; pause ;;
       14) uninstall_router; exit 0 ;;
       15|q|Q) exit 0 ;;
       *) echo "无效选择。"; pause ;;
