@@ -448,6 +448,19 @@ diagnose_network() {
   return 1
 }
 
+repair_system() {
+  if [ -x /usr/local/sbin/bypassproxy-repair.sh ]; then
+    ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-repair.sh
+    return
+  fi
+  if [ -x "$APP_DIR/scripts/repair.sh" ]; then
+    ROUTER_CONF="$CONF" "$APP_DIR/scripts/repair.sh"
+    return
+  fi
+  echo "缺少一键修复脚本。" >&2
+  return 1
+}
+
 uninstall_router() {
   if [ ! -x /usr/local/sbin/bypassproxy-uninstall.sh ]; then
     echo "缺少卸载脚本：/usr/local/sbin/bypassproxy-uninstall.sh" >&2
@@ -569,9 +582,10 @@ BypassProxy 旁路由代理助手 (bp)
 12) 更新本项目脚本
 13) 检查配置
 14) 网络诊断
-15) 应用旁路由转发/NAT
-16) 干净卸载
-17) 退出
+15) 一键修复
+16) 应用旁路由转发/NAT
+17) 干净卸载
+18) 退出
 EOF
     printf "请选择："
     read choice || exit 0
@@ -590,9 +604,10 @@ EOF
       12) update_core; pause ;;
       13) check_config; pause ;;
       14) diagnose_network; pause ;;
-      15) /usr/local/sbin/bypassproxy-forward.sh; echo "已应用。"; pause ;;
-      16) uninstall_router; exit 0 ;;
-      17|q|Q) exit 0 ;;
+      15) repair_system; pause ;;
+      16) /usr/local/sbin/bypassproxy-forward.sh; echo "已应用。"; pause ;;
+      17) uninstall_router; exit 0 ;;
+      18|q|Q) exit 0 ;;
       *) echo "无效选择。"; pause ;;
     esac
   done

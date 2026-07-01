@@ -32,6 +32,7 @@ type Status = {
 
 type Subscription = { id: string; name: string; url: string; enabled: boolean };
 type ActionResult = { ok: boolean; output?: string; error?: string; message?: string };
+type BasicSettings = Record<"LAN_IF" | "LAN_NET" | "LAN_IP" | "PROXY_PORT" | "PANEL_PORT" | "ADMIN_PORT" | "DNS1" | "DNS2" | "SUBSCRIBE_USER_AGENT" | "DOWNLOAD_PROXY", string>;
 type DialogState = {
   open: boolean;
   action: string;
@@ -347,11 +348,13 @@ function ControlCenter({
   status,
   openAction,
   openPassword,
+  openBasicSettings,
   showRecent,
 }: {
   status: Status | null;
   openAction: (dialog: DialogState) => void;
   openPassword: () => void;
+  openBasicSettings: () => void;
   showRecent: () => void;
 }) {
   const panelUrl = status?.addresses.panel || "";
@@ -373,6 +376,12 @@ function ControlCenter({
       description: "手机设网关不能上网时，优先重新应用这一项。",
       icon: Network,
       onClick: () => openAction({ open: true, action: "apply-forwarding", title: "应用转发/NAT", description: "重新写入旁路由转发规则，手机设网关不能上网时常用。", confirmText: "应用" }),
+    },
+    {
+      title: "一键修复",
+      description: "修复脚本入口、重新生成配置、检查配置、重启服务并应用转发。",
+      icon: Shield,
+      onClick: () => openAction({ open: true, action: "repair", title: "一键修复", description: "适合服务异常、配置丢失、端口或转发规则不正常时使用。", confirmText: "开始修复" }),
     },
     {
       title: "重启 sing-box",
@@ -401,6 +410,12 @@ function ControlCenter({
       description: "从 GitHub 检查并更新 BypassProxy 程序本体。",
       icon: RefreshCcw,
       onClick: () => openAction({ open: true, action: "update-core", title: "更新 BypassProxy 脚本", description: "从 GitHub 检查并更新本项目脚本。更新过程中管理后台可能会短暂重启。", confirmText: "更新脚本" }),
+    },
+    {
+      title: "基础设置",
+      description: "修改端口、LAN 信息、DNS、订阅 User-Agent 和下载代理。",
+      icon: Save,
+      onClick: openBasicSettings,
     },
     {
       title: "修改密钥",
@@ -531,6 +546,98 @@ function TextDialog({ title, content, onClose }: { title: string; content: strin
   return (
     <DialogShell title={title} description="最近一次操作的摘要。完整实时输出仍会显示在执行弹窗里。" onClose={onClose} wide>
       <pre className="max-h-[55vh] overflow-auto whitespace-pre-wrap rounded-md bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-100">{content || "暂无操作"}</pre>
+    </DialogShell>
+  );
+}
+
+function BasicSettingsDialog({ onClose, setResult }: { onClose: () => void; setResult: (result: string) => void }) {
+  const empty: BasicSettings = {
+    LAN_IF: "",
+    LAN_NET: "",
+    LAN_IP: "",
+    PROXY_PORT: "",
+    PANEL_PORT: "",
+    ADMIN_PORT: "",
+    DNS1: "",
+    DNS2: "",
+    SUBSCRIBE_USER_AGENT: "",
+    DOWNLOAD_PROXY: "",
+  };
+  const [settings, setSettings] = useState<BasicSettings>(empty);
+  const [busy, setBusy] = useState(true);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    api<{ settings: BasicSettings }>("/api/settings/basic")
+      .then((data) => {
+        if (alive) setSettings({ ...empty, ...data.settings });
+      })
+      .catch((err) => {
+        if (alive) setMessage(err instanceof Error ? err.message : "读取失败");
+      })
+      .finally(() => {
+        if (alive) setBusy(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  function update(key: keyof BasicSettings, value: string) {
+    setSettings((current) => ({ ...current, [key]: value }));
+  }
+
+  async function save() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const result = await api<ActionResult>("/api/settings/basic", { method: "POST", body: JSON.stringify(settings) });
+      const text = result.message || "基础设置已保存";
+      setMessage(text);
+      setResult(text);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const fields: { key: keyof BasicSettings; label: string; placeholder?: string }[] = [
+    { key: "LAN_IF", label: "LAN 网卡" },
+    { key: "LAN_NET", label: "LAN 网段" },
+    { key: "LAN_IP", label: "旁路由 LAN IP" },
+    { key: "PROXY_PORT", label: "代理端口" },
+    { key: "PANEL_PORT", label: "节点面板端口" },
+    { key: "ADMIN_PORT", label: "管理后台端口" },
+    { key: "DNS1", label: "DNS 1" },
+    { key: "DNS2", label: "DNS 2" },
+    { key: "SUBSCRIBE_USER_AGENT", label: "订阅 User-Agent" },
+    { key: "DOWNLOAD_PROXY", label: "下载代理", placeholder: "例如 http://127.0.0.1:7890，可留空" },
+  ];
+
+  return (
+    <DialogShell
+      title="基础设置"
+      description="保存后可执行“一键修复”或“更新订阅并应用”让相关配置生效。"
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <Button variant="secondary" disabled={busy} onClick={onClose}>关闭</Button>
+          <Button busy={busy} onClick={save}>保存</Button>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        {fields.map((field) => (
+          <Label key={field.key}>
+            {field.label}
+            <Input value={settings[field.key]} placeholder={field.placeholder} onChange={(event) => update(field.key, event.target.value)} disabled={busy} />
+          </Label>
+        ))}
+        {message ? <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground sm:col-span-2">{message}</div> : null}
+      </div>
     </DialogShell>
   );
 }
@@ -737,6 +844,7 @@ function App() {
   const [dialog, setDialog] = useState<DialogState>({ open: false, action: "", title: "", description: "" });
   const [addOpen, setAddOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [basicOpen, setBasicOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [busyAction, setBusyAction] = useState("");
   const [dialogOutput, setDialogOutput] = useState("");
@@ -826,12 +934,13 @@ function App() {
 
         <div className="grid gap-4">
           <SubscriptionCard items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} />
-          <ControlCenter status={status} openAction={openAction} openPassword={() => setPasswordOpen(true)} showRecent={() => setRecentOpen(true)} />
+          <ControlCenter status={status} openAction={openAction} openPassword={() => setPasswordOpen(true)} openBasicSettings={() => setBasicOpen(true)} showRecent={() => setRecentOpen(true)} />
         </div>
       </div>
       <ActionDialog dialog={dialog} setDialog={setDialog} running={Boolean(busyAction)} output={dialogOutput} error={dialogError} onConfirm={confirmAction} />
       {addOpen ? <AddSubscriptionDialog onClose={() => setAddOpen(false)} reload={loadAll} setResult={setLastResult} /> : null}
       {passwordOpen ? <PasswordDialog onClose={() => setPasswordOpen(false)} onPasswordChanged={() => setLoggedIn(false)} /> : null}
+      {basicOpen ? <BasicSettingsDialog onClose={() => setBasicOpen(false)} setResult={setLastResult} /> : null}
       {recentOpen ? <TextDialog title="最近结果" content={lastResult} onClose={() => setRecentOpen(false)} /> : null}
     </main>
   );

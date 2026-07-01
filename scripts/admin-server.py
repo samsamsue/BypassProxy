@@ -134,6 +134,8 @@ def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dic
         return [("更新 BypassProxy 脚本", ["/usr/local/sbin/bypassproxy-update-core.sh"], 360, router_env)]
     if action == "diagnose-network":
         return [("网络诊断", ["/usr/local/sbin/bypassproxy-diagnose-network.sh"], 180, router_env)]
+    if action == "repair":
+        return [("一键修复", ["/usr/local/sbin/bypassproxy-repair.sh"], 300, router_env)]
     if action == "apply-forwarding":
         return [("应用转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env)]
     raise ValueError("接口不存在")
@@ -416,6 +418,13 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self.send_json({"items": list_subscriptions()})
             return
+        if parsed.path == "/api/settings/basic":
+            if not self.require_auth():
+                return
+            conf = read_conf()
+            keys = ["LAN_IF", "LAN_NET", "LAN_IP", "PROXY_PORT", "PANEL_PORT", "ADMIN_PORT", "DNS1", "DNS2", "SUBSCRIBE_USER_AGENT", "DOWNLOAD_PROXY"]
+            self.send_json({"settings": {key: conf.get(key, "") for key in keys}})
+            return
         if parsed.path == "/api/logs":
             if not self.require_auth():
                 return
@@ -518,6 +527,27 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("端口无效")
             save_conf_key("ADMIN_PORT", port)
             return {"ok": True, "message": "端口已保存，重启 Web 管理页后生效"}
+        if path == "/api/settings/basic":
+            allowed = {
+                "LAN_IF": r"^[A-Za-z0-9_.:-]{1,64}$",
+                "LAN_NET": r"^[0-9A-Fa-f:.\/]{3,64}$",
+                "LAN_IP": r"^[0-9A-Fa-f:.]{3,64}$",
+                "PROXY_PORT": r"^\d{2,5}$",
+                "PANEL_PORT": r"^\d{2,5}$",
+                "ADMIN_PORT": r"^\d{2,5}$",
+                "DNS1": r"^[0-9A-Fa-f:.]{3,64}$",
+                "DNS2": r"^[0-9A-Fa-f:.]{0,64}$",
+                "SUBSCRIBE_USER_AGENT": r"^.{0,120}$",
+                "DOWNLOAD_PROXY": r"^.{0,300}$",
+            }
+            for key, pattern in allowed.items():
+                value = str(data.get(key, "")).strip()
+                if value and not re.fullmatch(pattern, value):
+                    raise ValueError(f"{key} 格式无效")
+                if key.endswith("PORT") and value and not (1 <= int(value) <= 65535):
+                    raise ValueError(f"{key} 端口无效")
+                save_conf_key(key, value)
+            return {"ok": True, "message": "基础设置已保存。端口类修改需要应用配置或重启相关服务后生效。"}
         if path == "/api/settings/panel-secret":
             current = str(data.get("current") or "")
             new_secret = str(data.get("newSecret") or "").strip()
@@ -582,6 +612,8 @@ class Handler(SimpleHTTPRequestHandler):
             return run_command(["/usr/local/sbin/bypassproxy-update-core.sh"], timeout=360, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/diagnose-network":
             return run_command(["/usr/local/sbin/bypassproxy-diagnose-network.sh"], timeout=180, env={"ROUTER_CONF": str(CONF)})
+        if path == "/api/actions/repair":
+            return run_command(["/usr/local/sbin/bypassproxy-repair.sh"], timeout=300, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/apply-forwarding":
             return run_command(["/usr/local/sbin/bypassproxy-forward.sh"], timeout=60, env={"ROUTER_CONF": str(CONF)})
         return {"ok": False, "error": "接口不存在"}

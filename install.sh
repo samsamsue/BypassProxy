@@ -371,6 +371,8 @@ cp "$ROOT/scripts/update-rulesets.sh" /usr/local/sbin/bypassproxy-update-ruleset
 chmod 0755 /usr/local/sbin/bypassproxy-update-rulesets.sh
 cp "$ROOT/scripts/update-core.sh" /usr/local/sbin/bypassproxy-update-core.sh
 chmod 0755 /usr/local/sbin/bypassproxy-update-core.sh
+cp "$ROOT/scripts/repair.sh" /usr/local/sbin/bypassproxy-repair.sh
+chmod 0755 /usr/local/sbin/bypassproxy-repair.sh
 cp "$ROOT/scripts/diagnose-network.sh" /usr/local/sbin/bypassproxy-diagnose-network.sh
 chmod 0755 /usr/local/sbin/bypassproxy-diagnose-network.sh
 cp "$ROOT/scripts/uninstall.sh" /usr/local/sbin/bypassproxy-uninstall.sh
