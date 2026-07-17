@@ -3,7 +3,42 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib";
 
-const Select = SelectPrimitive.Root;
+const selectOpenAttr = "data-bypassproxy-select-open";
+let openSelectCount = 0;
+let clearSelectTimer: number | undefined;
+
+function markSelectOpen(open: boolean) {
+  if (typeof document === "undefined") return;
+  if (clearSelectTimer) {
+    window.clearTimeout(clearSelectTimer);
+    clearSelectTimer = undefined;
+  }
+  if (open) {
+    openSelectCount += 1;
+    document.body.setAttribute(selectOpenAttr, "true");
+    return;
+  }
+  openSelectCount = Math.max(0, openSelectCount - 1);
+  if (openSelectCount === 0) {
+    clearSelectTimer = window.setTimeout(() => {
+      document.body.removeAttribute(selectOpenAttr);
+      clearSelectTimer = undefined;
+    }, 120);
+  }
+}
+
+function Select({ onOpenChange, ...props }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>) {
+  return (
+    <SelectPrimitive.Root
+      onOpenChange={(open) => {
+        markSelectOpen(open);
+        onOpenChange?.(open);
+      }}
+      {...props}
+    />
+  );
+}
+
 const SelectGroup = SelectPrimitive.Group;
 const SelectValue = SelectPrimitive.Value;
 
@@ -28,8 +63,9 @@ function SelectContent({ className, children, position = "popper", ...props }: R
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
+        data-bypassproxy-select-content
         className={cn(
-          "relative z-50 max-h-80 min-w-[8rem] overflow-hidden rounded-md border bg-background text-foreground shadow-md",
+          "relative z-50 max-h-80 min-w-[8rem] overflow-hidden rounded-md border bg-background text-foreground",
           position === "popper" && "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1",
           className,
         )}

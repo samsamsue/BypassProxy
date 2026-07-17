@@ -5,6 +5,7 @@ APP_DIR="${APP_DIR:-/opt/bypassproxy}"
 CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 CONFIG_JSON="/etc/sing-box/config.json"
 SUBSCRIPTION_DIR="/etc/bypassproxy/subscriptions.d"
+CUSTOM_RULES_JSON="${CUSTOM_RULES_JSON:-/etc/bypassproxy/custom-rules.json}"
 
 pause() {
   printf "\n按回车继续..."
@@ -31,6 +32,7 @@ load_conf() {
   PANEL_PORT="${PANEL_PORT:-9091}"
   PANEL_SECRET="${PANEL_SECRET:-}"
   ADMIN_PORT="${ADMIN_PORT:-8088}"
+  TUN_ENABLE="${TUN_ENABLE:-1}"
   DNS1="${DNS1:-223.5.5.5}"
   DNS2="${DNS2:-119.29.29.29}"
   SUBSCRIBE_URL="${SUBSCRIBE_URL:-}"
@@ -291,6 +293,21 @@ EOF
   done
 }
 
+
+custom_rules_manager() {
+  if [ ! -f "$APP_DIR/scripts/manage-custom-rules.py" ]; then
+    echo "缺少自定义分流管理脚本：$APP_DIR/scripts/manage-custom-rules.py" >&2
+    return 1
+  fi
+  CUSTOM_RULES_JSON="$CUSTOM_RULES_JSON" python3 "$APP_DIR/scripts/manage-custom-rules.py"
+  printf "是否立即应用配置？[y/N]: "
+  read answer || answer=""
+  case "$answer" in
+    y|Y|yes|YES) apply_config ;;
+    *) echo "已保存，稍后应用配置后生效。" ;;
+  esac
+}
+
 update_rulesets() {
   if [ -x /usr/local/sbin/bypassproxy-update-rulesets.sh ]; then
     ROUTER_CONF="$CONF" RULE_DIR=/etc/bypassproxy/rules /usr/local/sbin/bypassproxy-update-rulesets.sh
@@ -387,6 +404,47 @@ update_core() {
   return 1
 }
 
+backup_sync_menu() {
+  need_root
+  if [ ! -x /usr/local/sbin/bypassproxy-backup-sync.sh ]; then
+    echo "缺少备份同步脚本：/usr/local/sbin/bypassproxy-backup-sync.sh" >&2
+    return 1
+  fi
+  while true; do
+    clear 2>/dev/null || true
+    cat <<EOF
+备份同步
+========
+1) 创建本地备份
+2) 测试远程同步连接
+3) 上传备份到远程同步
+4) 查看远程备份列表
+5) 从远程恢复最新备份
+6) 返回
+EOF
+    printf "请选择："
+    read choice || return
+    case "$choice" in
+      1) ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-backup-sync.sh backup; pause ;;
+      2) ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-backup-sync.sh test; pause ;;
+      3) ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-backup-sync.sh upload; pause ;;
+      4) ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-backup-sync.sh list; pause ;;
+      5)
+        printf "恢复会覆盖当前配置。请输入 RESTORE 继续："
+        read answer || answer=""
+        if [ "$answer" = "RESTORE" ]; then
+          ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-backup-sync.sh restore-latest
+        else
+          echo "已取消。"
+        fi
+        pause
+        ;;
+      6|q|Q) return ;;
+      *) echo "无效选择。"; pause ;;
+    esac
+  done
+}
+
 admin_web_status() {
   load_conf
   state="$(systemctl is-active bypassproxy-admin 2>/dev/null || true)"
@@ -464,6 +522,19 @@ diagnose_network() {
   return 1
 }
 
+speed_test() {
+  if [ -x /usr/local/sbin/bypassproxy-speed-test.sh ]; then
+    ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-speed-test.sh
+    return
+  fi
+  if [ -x "$APP_DIR/scripts/speed-test.sh" ]; then
+    ROUTER_CONF="$CONF" "$APP_DIR/scripts/speed-test.sh"
+    return
+  fi
+  echo "缺少节点测速脚本。" >&2
+  return 1
+}
+
 repair_system() {
   if [ -x /usr/local/sbin/bypassproxy-repair.sh ]; then
     ROUTER_CONF="$CONF" /usr/local/sbin/bypassproxy-repair.sh
@@ -524,6 +595,7 @@ edit_basic() {
   prompt_key PANEL_PORT "面板端口" "$PANEL_PORT"
   prompt_key PANEL_SECRET "登录密钥" "$PANEL_SECRET"
   prompt_key ADMIN_PORT "管理后台端口" "$ADMIN_PORT"
+  prompt_key TUN_ENABLE "TUN 开关 1=开 0=关" "$TUN_ENABLE"
   prompt_key DNS1 "DNS 1" "$DNS1"
   prompt_key DNS2 "DNS 2" "$DNS2"
   prompt_key SUBSCRIBE_URL "订阅/节点地址" "$SUBSCRIBE_URL"
@@ -590,29 +662,32 @@ BypassProxy 管理菜单 (bp)
   3) 恢复代理
   4) 重启代理
   5) 网络诊断
+  6) 节点下载测速
 
 订阅和节点
-  6) 订阅/节点管理
-  7) 更新订阅并应用
-  8) 更新国内分流规则
-  9) 更新节点面板(MetaCubeXD)
+  7) 订阅/节点管理
+  8) 更新订阅并应用
+  9) 更新国内分流规则
+ 10) 自定义分流
+ 11) 更新节点面板(MetaCubeXD)
 
 入口和设置
- 10) 显示入口地址
- 11) 管理后台
- 12) 修改基础设置
- 13) 显示登录密钥
+ 12) 显示入口地址
+ 13) 管理后台
+ 14) 修改基础设置
+ 15) 显示登录密钥
 
 维护修复
- 14) 检查配置
- 15) 应用旁路由转发/NAT
- 16) 一键修复
- 17) 查看日志
- 18) 更新本项目脚本
+ 16) 检查配置
+ 17) 应用旁路由转发/NAT
+ 18) 一键修复
+ 19) 查看日志
+ 20) 更新本项目脚本
+ 21) 备份同步
 
 危险操作
- 19) 干净卸载
- 20) 退出
+ 22) 干净卸载
+ 23) 退出
 EOF
     printf "请选择："
     read choice || exit 0
@@ -622,21 +697,24 @@ EOF
       3) resume_proxy; pause ;;
       4) apply_config; echo "已重启。"; pause ;;
       5) diagnose_network; pause ;;
-      6) subscription_manager ;;
-      7) update_subscription; pause ;;
-      8) update_rulesets; apply_config; pause ;;
-      9) update_webui; pause ;;
-      10) open_info; pause ;;
-      11) admin_web_menu ;;
-      12) edit_basic; pause ;;
-      13) show_panel_secret; pause ;;
-      14) check_config; pause ;;
-      15) /usr/local/sbin/bypassproxy-forward.sh; echo "已应用。"; pause ;;
-      16) repair_system; pause ;;
-      17) journalctl -u sing-box -f ;;
-      18) update_core; pause ;;
-      19) uninstall_router; exit 0 ;;
-      20|q|Q) exit 0 ;;
+      6) speed_test; pause ;;
+      7) subscription_manager ;;
+      8) update_subscription; pause ;;
+      9) update_rulesets; apply_config; pause ;;
+      10) custom_rules_manager; pause ;;
+      11) update_webui; pause ;;
+      12) open_info; pause ;;
+      13) admin_web_menu ;;
+      14) edit_basic; pause ;;
+      15) show_panel_secret; pause ;;
+      16) check_config; pause ;;
+      17) /usr/local/sbin/bypassproxy-forward.sh; echo "已应用。"; pause ;;
+      18) repair_system; pause ;;
+      19) journalctl -u sing-box -f ;;
+      20) update_core; pause ;;
+      21) backup_sync_menu ;;
+      22) uninstall_router; exit 0 ;;
+      23|q|Q) exit 0 ;;
       *) echo "无效选择。"; pause ;;
     esac
   done

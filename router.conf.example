@@ -12,6 +12,7 @@ PANEL_SECRET=abc123
 ADMIN_PORT=8088
 
 # TUN 设置。
+TUN_ENABLE=1
 TUN_NAME=sbtun0
 TUN_ADDRESS=28.0.0.1/30
 
@@ -32,6 +33,9 @@ SINGBOX_DEB_URL=https://github.com/SagerNet/sing-box/releases/download/v1.13.14/
 # 示例：DOWNLOAD_PROXY=http://127.0.0.1:7890
 DOWNLOAD_PROXY=''
 
+# 可选：自定义分流规则保存位置。
+CUSTOM_RULES_JSON=/etc/bypassproxy/custom-rules.json
+
 # 可选：GitHub 下载加速前缀。
 # 示例：GITHUB_DOWNLOAD_PREFIX=https://你的加速地址/
 GITHUB_DOWNLOAD_PREFIX=''
@@ -42,3 +46,19 @@ GITHUB_DOWNLOAD_PREFIXES='https://gh-proxy.com/ https://ghproxy.net/ https://gh.
 # MetaCubeXD 静态 Web 面板更新来源。
 WEBUI_RELEASE_API=https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest
 WEBUI_DOWNLOAD_URL=https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz
+
+# 可选：备份同步。支持 WebDAV 和 S3 兼容存储；密码建议在 Web 管理页填写保存。
+SYNC_PROVIDER=webdav
+WEBDAV_URL=''
+WEBDAV_USERNAME=''
+WEBDAV_PASSWORD=''
+WEBDAV_PATH=BypassProxy
+
+# 可选：S3 兼容对象存储。SYNC_PROVIDER=s3 时使用。
+# AWS S3 可留空 S3_ENDPOINT，并把 S3_REGION 填为真实区域；其他兼容服务通常要填写 Endpoint。
+S3_ENDPOINT=''
+S3_BUCKET=''
+S3_REGION=auto
+S3_ACCESS_KEY=''
+S3_SECRET_KEY=''
+S3_PREFIX=BypassProxy

@@ -19,6 +19,7 @@ APP_DIR = Path(os.environ.get("APP_DIR", "/opt/bypassproxy"))
 SUBSCRIPTION_DIR = Path(os.environ.get("SUBSCRIPTION_DIR", "/etc/bypassproxy/subscriptions.d"))
 OUTBOUNDS_JSON = Path(os.environ.get("OUTBOUNDS_JSON", "/etc/bypassproxy/outbounds.json"))
 SING_BOX_CONFIG = Path(os.environ.get("SING_BOX_CONFIG", "/etc/sing-box/config.json"))
+CUSTOM_RULES_JSON = Path(os.environ.get("CUSTOM_RULES_JSON", "/etc/bypassproxy/custom-rules.json"))
 STATIC_DIR = Path(os.environ.get("ADMIN_UI_DIR", "/usr/local/share/bypassproxy-admin"))
 
 
@@ -54,6 +55,28 @@ def read_conf() -> dict[str, str]:
 
 def quote_value(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
+
+
+def custom_rules_path() -> Path:
+    configured = os.environ.get("CUSTOM_RULES_JSON") or read_conf().get("CUSTOM_RULES_JSON") or str(CUSTOM_RULES_JSON)
+    return Path(configured)
+
+
+def sync_settings() -> dict:
+    conf = read_conf()
+    return {
+        "provider": conf.get("SYNC_PROVIDER", "webdav") or "webdav",
+        "webdavUrl": conf.get("WEBDAV_URL", ""),
+        "webdavUsername": conf.get("WEBDAV_USERNAME", ""),
+        "webdavPath": conf.get("WEBDAV_PATH", "BypassProxy") or "BypassProxy",
+        "hasPassword": bool(conf.get("WEBDAV_PASSWORD", "")),
+        "s3Endpoint": conf.get("S3_ENDPOINT", ""),
+        "s3Bucket": conf.get("S3_BUCKET", ""),
+        "s3Region": conf.get("S3_REGION", "auto") or "auto",
+        "s3AccessKey": conf.get("S3_ACCESS_KEY", ""),
+        "s3Prefix": conf.get("S3_PREFIX", "BypassProxy") or "BypassProxy",
+        "hasS3SecretKey": bool(conf.get("S3_SECRET_KEY", "")),
+    }
 
 
 def save_conf_key(key: str, value: str) -> None:
@@ -101,6 +124,79 @@ def is_virtual_or_tunnel_interface(name: str) -> bool:
         "zt",
     )
     return name == "lo" or name.startswith(prefixes)
+
+
+
+def empty_custom_rules() -> dict[str, list[str]]:
+    return {"directDomains": [], "directIps": [], "proxyDomains": [], "proxyIps": []}
+
+
+def normalize_custom_domain(value: str) -> str:
+    value = str(value or "").strip().lower()
+    if "://" in value:
+        value = value.split("://", 1)[1]
+    value = re.split(r"[/?#]", value, maxsplit=1)[0]
+    value = value.split(":", 1)[0]
+    value = value.lstrip("*.").strip(".")
+    if not value or any(char.isspace() for char in value):
+        raise ValueError(f"域名格式无效：{value or '(空)'}")
+    return value
+
+
+def normalize_custom_ip(value: str) -> str:
+    value = str(value or "").strip()
+    if not value:
+        raise ValueError("IP/CIDR 不能为空")
+    try:
+        return str(ipaddress.ip_network(value, strict=False))
+    except ValueError as exc:
+        raise ValueError(f"IP/CIDR 格式无效：{value}") from exc
+
+
+def normalize_custom_rules(data: dict) -> dict[str, list[str]]:
+    rules = empty_custom_rules()
+    aliases = {
+        "directDomains": ["directDomains", "direct_domains"],
+        "directIps": ["directIps", "direct_ips"],
+        "proxyDomains": ["proxyDomains", "proxy_domains"],
+        "proxyIps": ["proxyIps", "proxy_ips"],
+    }
+    for key, names in aliases.items():
+        raw_values = []
+        for name in names:
+            value = data.get(name)
+            if isinstance(value, list):
+                raw_values = value
+                break
+        seen = set()
+        for raw in raw_values:
+            value = normalize_custom_ip(raw) if key.endswith("Ips") else normalize_custom_domain(raw)
+            if value not in seen:
+                seen.add(value)
+                rules[key].append(value)
+    return rules
+
+
+def load_custom_rules() -> dict[str, list[str]]:
+    path = custom_rules_path()
+    if not path.exists():
+        return empty_custom_rules()
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(data, dict):
+        raise ValueError("自定义分流规则必须是 JSON 对象")
+    return normalize_custom_rules(data)
+
+
+def save_custom_rules(data: dict) -> dict[str, list[str]]:
+    rules = normalize_custom_rules(data)
+    path = custom_rules_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rules, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    return rules
 
 
 def list_network_interfaces() -> list[dict[str, str]]:
@@ -180,19 +276,40 @@ def run_command(args: list[str], timeout: int = 120, env: dict[str, str] | None 
 
 def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dict[str, str] | None]]:
     router_env = {"ROUTER_CONF": str(CONF)}
+    render_env = {"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG), "CUSTOM_RULES_JSON": str(custom_rules_path())}
+    def sync_env_from_data() -> dict[str, str]:
+        env = dict(router_env)
+        mapping = {
+            "provider": "BYPASSPROXY_SYNC_PROVIDER",
+            "webdavUrl": "BYPASSPROXY_WEBDAV_URL",
+            "webdavUsername": "BYPASSPROXY_WEBDAV_USERNAME",
+            "webdavPassword": "BYPASSPROXY_WEBDAV_PASSWORD",
+            "webdavPath": "BYPASSPROXY_WEBDAV_PATH",
+            "s3Endpoint": "BYPASSPROXY_S3_ENDPOINT",
+            "s3Bucket": "BYPASSPROXY_S3_BUCKET",
+            "s3Region": "BYPASSPROXY_S3_REGION",
+            "s3AccessKey": "BYPASSPROXY_S3_ACCESS_KEY",
+            "s3SecretKey": "BYPASSPROXY_S3_SECRET_KEY",
+            "s3Prefix": "BYPASSPROXY_S3_PREFIX",
+        }
+        for source, target in mapping.items():
+            value = str(data.get(source) or "").strip()
+            if value:
+                env[target] = value
+        return env
     if action == "update-subscription":
         sub_env = dict(router_env)
         if data.get("direct"):
             sub_env["BYPASSPROXY_DIRECT_DOWNLOAD"] = "1"
         return [
             ("更新订阅", ["/usr/local/sbin/bypassproxy-update-subscription.sh"], 240, sub_env),
-            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, {"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG)}),
+            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, render_env),
             ("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None),
             ("重启 sing-box", ["systemctl", "restart", "sing-box"], 40, None),
         ]
     if action == "apply-config":
         return [
-            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, {"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG)}),
+            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, render_env),
             ("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None),
             ("重启 sing-box", ["systemctl", "restart", "sing-box"], 40, None),
         ]
@@ -204,7 +321,7 @@ def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dic
         return [("暂停代理服务", ["systemctl", "disable", "--now", "sing-box"], 40, None)]
     if action == "resume-proxy":
         return [
-            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, {"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG)}),
+            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, render_env),
             ("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None),
             ("恢复代理服务", ["systemctl", "enable", "--now", "sing-box"], 40, None),
             ("应用转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env),
@@ -217,10 +334,22 @@ def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dic
         return [("更新 BypassProxy 脚本", ["/usr/local/sbin/bypassproxy-update-core.sh"], 360, router_env)]
     if action == "diagnose-network":
         return [("网络诊断", ["/usr/local/sbin/bypassproxy-diagnose-network.sh"], 180, router_env)]
+    if action == "speed-test":
+        return [("节点下载测速", ["/usr/local/sbin/bypassproxy-speed-test.sh"], 90, router_env)]
     if action == "repair":
         return [("一键修复", ["/usr/local/sbin/bypassproxy-repair.sh"], 300, router_env)]
     if action == "apply-forwarding":
         return [("应用转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env)]
+    if action == "backup-local":
+        return [("创建本地备份", ["/usr/local/sbin/bypassproxy-backup-sync.sh", "backup"], 120, router_env)]
+    if action == "sync-test":
+        return [("测试远程同步连接", ["/usr/local/sbin/bypassproxy-backup-sync.sh", "test"], 120, sync_env_from_data())]
+    if action == "sync-upload":
+        return [("上传备份到远程同步", ["/usr/local/sbin/bypassproxy-backup-sync.sh", "upload"], 300, router_env)]
+    if action == "sync-restore-latest":
+        restore_env = dict(router_env)
+        restore_env["BYPASSPROXY_SKIP_ADMIN_RESTART"] = "1"
+        return [("从远程同步恢复最新备份", ["/usr/local/sbin/bypassproxy-backup-sync.sh", "restore-latest"], 300, restore_env)]
     raise ValueError("接口不存在")
 
 
@@ -349,6 +478,7 @@ def public_status() -> dict:
             "proxy": f"http://{lan_ip}:{proxy_port}",
         },
         "ports": {"admin": admin_port, "panel": panel_port, "proxy": proxy_port},
+        "tunEnabled": conf.get("TUN_ENABLE", "1").lower() not in {"0", "false", "off", "no", "disable", "disabled"},
         "nodeCount": node_count(),
         "subscriptionCount": len(list_subscriptions()),
     }
@@ -501,11 +631,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             self.send_json({"items": list_subscriptions()})
             return
+        if parsed.path == "/api/custom-rules":
+            if not self.require_auth():
+                return
+            self.send_json({"rules": load_custom_rules()})
+            return
         if parsed.path == "/api/settings/basic":
             if not self.require_auth():
                 return
             conf = read_conf()
-            keys = ["LAN_IF", "LAN_NET", "LAN_IP", "PROXY_PORT", "PANEL_PORT", "ADMIN_PORT", "DNS1", "DNS2", "SUBSCRIBE_USER_AGENT", "DOWNLOAD_PROXY"]
+            keys = ["LAN_IF", "LAN_NET", "LAN_IP", "PROXY_PORT", "PANEL_PORT", "ADMIN_PORT", "TUN_ENABLE", "DNS1", "DNS2", "SUBSCRIBE_USER_AGENT", "DOWNLOAD_PROXY"]
             interfaces = list_network_interfaces()
             detected = detect_lan_settings(conf.get("LAN_IF", ""))
             settings = {key: conf.get(key, "") for key in keys}
@@ -513,6 +648,11 @@ class Handler(SimpleHTTPRequestHandler):
                 if not settings.get(key):
                     settings[key] = value
             self.send_json({"settings": settings, "interfaces": interfaces, "detected": detected})
+            return
+        if parsed.path == "/api/settings/sync":
+            if not self.require_auth():
+                return
+            self.send_json({"settings": sync_settings()})
             return
         if parsed.path == "/api/logs":
             if not self.require_auth():
@@ -610,6 +750,49 @@ class Handler(SimpleHTTPRequestHandler):
             item = load_subscription(item_path)
             write_subscription(item_path, item["name"], item["url"], not item["enabled"])
             return {"ok": True, "item": load_subscription(item_path)}
+        if path == "/api/custom-rules":
+            rules = save_custom_rules(data)
+            return {"ok": True, "message": "自定义分流规则已保存。应用配置后生效。", "rules": rules}
+        if path == "/api/settings/sync":
+            provider = str(data.get("provider") or "webdav").strip().lower()
+            if provider not in {"webdav", "s3"}:
+                raise ValueError("同步方式无效")
+            webdav_url = str(data.get("webdavUrl") or "").strip()
+            webdav_username = str(data.get("webdavUsername") or "").strip()
+            webdav_password = str(data.get("webdavPassword") or "")
+            webdav_path = str(data.get("webdavPath") or "BypassProxy").strip().strip("/")
+            s3_endpoint = str(data.get("s3Endpoint") or "").strip().rstrip("/")
+            s3_bucket = str(data.get("s3Bucket") or "").strip()
+            s3_region = str(data.get("s3Region") or "auto").strip() or "auto"
+            s3_access_key = str(data.get("s3AccessKey") or "").strip()
+            s3_secret_key = str(data.get("s3SecretKey") or "")
+            s3_prefix = str(data.get("s3Prefix") or "BypassProxy").strip().strip("/")
+            if webdav_url and not re.fullmatch(r"https?://.{3,300}", webdav_url):
+                raise ValueError("WebDAV 地址格式无效")
+            if webdav_path and not re.fullmatch(r"[A-Za-z0-9._@+\-/]{1,160}", webdav_path):
+                raise ValueError("远端目录只能包含字母、数字、点、横线、下划线和斜杠")
+            if s3_endpoint and not re.fullmatch(r"https?://.{3,300}", s3_endpoint):
+                raise ValueError("S3 Endpoint 格式无效")
+            if s3_bucket and not re.fullmatch(r"[A-Za-z0-9._-]{2,120}", s3_bucket):
+                raise ValueError("S3 Bucket 格式无效")
+            if s3_region and not re.fullmatch(r"[A-Za-z0-9._-]{1,80}", s3_region):
+                raise ValueError("S3 Region 格式无效")
+            if s3_prefix and not re.fullmatch(r"[A-Za-z0-9._@+\-/]{1,200}", s3_prefix):
+                raise ValueError("S3 Prefix 只能包含字母、数字、点、横线、下划线和斜杠")
+            save_conf_key("SYNC_PROVIDER", provider)
+            save_conf_key("WEBDAV_URL", webdav_url)
+            save_conf_key("WEBDAV_USERNAME", webdav_username)
+            if webdav_password:
+                save_conf_key("WEBDAV_PASSWORD", webdav_password)
+            save_conf_key("WEBDAV_PATH", webdav_path or "BypassProxy")
+            save_conf_key("S3_ENDPOINT", s3_endpoint)
+            save_conf_key("S3_BUCKET", s3_bucket)
+            save_conf_key("S3_REGION", s3_region)
+            save_conf_key("S3_ACCESS_KEY", s3_access_key)
+            if s3_secret_key:
+                save_conf_key("S3_SECRET_KEY", s3_secret_key)
+            save_conf_key("S3_PREFIX", s3_prefix or "BypassProxy")
+            return {"ok": True, "message": "同步设置已保存", "settings": sync_settings()}
         if path == "/api/settings/admin-port":
             port = str(data.get("port") or "").strip()
             if not re.fullmatch(r"\d{2,5}", port) or not (1 <= int(port) <= 65535):
@@ -629,6 +812,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "PROXY_PORT": r"^\d{2,5}$",
                 "PANEL_PORT": r"^\d{2,5}$",
                 "ADMIN_PORT": r"^\d{2,5}$",
+                "TUN_ENABLE": r"^(0|1|true|false|on|off|yes|no|enable|disable|enabled|disabled)$",
                 "DNS1": r"^[0-9A-Fa-f:.]{3,64}$",
                 "DNS2": r"^[0-9A-Fa-f:.]{0,64}$",
                 "SUBSCRIBE_USER_AGENT": r"^.{0,120}$",
@@ -640,6 +824,8 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError(f"{key} 格式无效")
                 if key.endswith("PORT") and value and not (1 <= int(value) <= 65535):
                     raise ValueError(f"{key} 端口无效")
+                if key == "TUN_ENABLE":
+                    value = "0" if value.lower() in {"0", "false", "off", "no", "disable", "disabled"} else "1"
                 save_conf_key(key, value)
             return {"ok": True, "message": "基础设置已保存。端口类修改需要应用配置或重启相关服务后生效。"}
         if path == "/api/settings/panel-secret":
@@ -678,7 +864,7 @@ class Handler(SimpleHTTPRequestHandler):
                     str(APP_DIR / "scripts/render-config.py"),
                 ],
                 timeout=60,
-                env={"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG)},
+                env={"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG), "CUSTOM_RULES_JSON": str(custom_rules_path())},
             )
             if result["ok"]:
                 check = run_command(["sing-box", "check", "-C", "/etc/sing-box"], timeout=60)
@@ -718,10 +904,20 @@ class Handler(SimpleHTTPRequestHandler):
             return run_command(["/usr/local/sbin/bypassproxy-update-core.sh"], timeout=360, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/diagnose-network":
             return run_command(["/usr/local/sbin/bypassproxy-diagnose-network.sh"], timeout=180, env={"ROUTER_CONF": str(CONF)})
+        if path == "/api/actions/speed-test":
+            return run_command(["/usr/local/sbin/bypassproxy-speed-test.sh"], timeout=90, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/repair":
             return run_command(["/usr/local/sbin/bypassproxy-repair.sh"], timeout=300, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/apply-forwarding":
             return run_command(["/usr/local/sbin/bypassproxy-forward.sh"], timeout=60, env={"ROUTER_CONF": str(CONF)})
+        if path == "/api/actions/backup-local":
+            return run_command(["/usr/local/sbin/bypassproxy-backup-sync.sh", "backup"], timeout=120, env={"ROUTER_CONF": str(CONF)})
+        if path == "/api/actions/sync-test":
+            return run_command(["/usr/local/sbin/bypassproxy-backup-sync.sh", "test"], timeout=120, env={"ROUTER_CONF": str(CONF)})
+        if path == "/api/actions/sync-upload":
+            return run_command(["/usr/local/sbin/bypassproxy-backup-sync.sh", "upload"], timeout=300, env={"ROUTER_CONF": str(CONF)})
+        if path == "/api/actions/sync-restore-latest":
+            return run_command(["/usr/local/sbin/bypassproxy-backup-sync.sh", "restore-latest"], timeout=300, env={"ROUTER_CONF": str(CONF)})
         return {"ok": False, "error": "接口不存在"}
 
 

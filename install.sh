@@ -107,6 +107,7 @@ PROXY_PORT='$(quote_value "$PROXY_PORT")'
 PANEL_PORT='$(quote_value "$PANEL_PORT")'
 PANEL_SECRET='$(quote_value "$PANEL_SECRET")'
 ADMIN_PORT='$(quote_value "$ADMIN_PORT")'
+TUN_ENABLE='$(quote_value "$TUN_ENABLE")'
 TUN_NAME='$(quote_value "$TUN_NAME")'
 TUN_ADDRESS='$(quote_value "$TUN_ADDRESS")'
 DNS1='$(quote_value "$DNS1")'
@@ -119,6 +120,17 @@ DOWNLOAD_PROXY='$(quote_value "$DOWNLOAD_PROXY")'
 GITHUB_DOWNLOAD_PREFIX='$(quote_value "$GITHUB_DOWNLOAD_PREFIX")'
 WEBUI_RELEASE_API='$(quote_value "$WEBUI_RELEASE_API")'
 WEBUI_DOWNLOAD_URL='$(quote_value "$WEBUI_DOWNLOAD_URL")'
+SYNC_PROVIDER='$(quote_value "$SYNC_PROVIDER")'
+WEBDAV_URL='$(quote_value "$WEBDAV_URL")'
+WEBDAV_USERNAME='$(quote_value "$WEBDAV_USERNAME")'
+WEBDAV_PASSWORD='$(quote_value "$WEBDAV_PASSWORD")'
+WEBDAV_PATH='$(quote_value "$WEBDAV_PATH")'
+S3_ENDPOINT='$(quote_value "$S3_ENDPOINT")'
+S3_BUCKET='$(quote_value "$S3_BUCKET")'
+S3_REGION='$(quote_value "$S3_REGION")'
+S3_ACCESS_KEY='$(quote_value "$S3_ACCESS_KEY")'
+S3_SECRET_KEY='$(quote_value "$S3_SECRET_KEY")'
+S3_PREFIX='$(quote_value "$S3_PREFIX")'
 EOF
   mv "$tmp" "$CONF"
 }
@@ -178,11 +190,23 @@ create_conf_interactively() {
   SUBSCRIBE_USER_AGENT="clash.meta"
   DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
   GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
+  TUN_ENABLE="1"
   TUN_NAME="sbtun0"
   TUN_ADDRESS="28.0.0.1/30"
   SINGBOX_DEB_URL="https://github.com/SagerNet/sing-box/releases/download/v1.13.14/sing-box_1.13.14_linux_amd64.deb"
   WEBUI_RELEASE_API="https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest"
   WEBUI_DOWNLOAD_URL="https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz"
+  SYNC_PROVIDER="webdav"
+  WEBDAV_URL=""
+  WEBDAV_USERNAME=""
+  WEBDAV_PASSWORD=""
+  WEBDAV_PATH="BypassProxy"
+  S3_ENDPOINT=""
+  S3_BUCKET=""
+  S3_REGION="auto"
+  S3_ACCESS_KEY=""
+  S3_SECRET_KEY=""
+  S3_PREFIX="BypassProxy"
 
   write_conf
   chmod 0600 "$CONF" 2>/dev/null || true
@@ -199,6 +223,7 @@ fi
 
 LAN_IF="${LAN_IF:-enp3s0}"
 LAN_NET="${LAN_NET:-192.168.3.0/24}"
+TUN_ENABLE="${TUN_ENABLE:-1}"
 DNS1="${DNS1:-223.5.5.5}"
 DNS2="${DNS2:-119.29.29.29}"
 SUBSCRIBE_URL="${SUBSCRIBE_URL:-}"
@@ -210,6 +235,17 @@ GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
 GITHUB_DOWNLOAD_PREFIXES="${GITHUB_DOWNLOAD_PREFIXES:-https://gh-proxy.com/ https://ghproxy.net/ https://gh.llkk.cc/}"
 WEBUI_RELEASE_API="${WEBUI_RELEASE_API:-https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest}"
 WEBUI_DOWNLOAD_URL="${WEBUI_DOWNLOAD_URL:-https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz}"
+SYNC_PROVIDER="${SYNC_PROVIDER:-webdav}"
+WEBDAV_URL="${WEBDAV_URL:-}"
+WEBDAV_USERNAME="${WEBDAV_USERNAME:-}"
+WEBDAV_PASSWORD="${WEBDAV_PASSWORD:-}"
+WEBDAV_PATH="${WEBDAV_PATH:-BypassProxy}"
+S3_ENDPOINT="${S3_ENDPOINT:-}"
+S3_BUCKET="${S3_BUCKET:-}"
+S3_REGION="${S3_REGION:-auto}"
+S3_ACCESS_KEY="${S3_ACCESS_KEY:-}"
+S3_SECRET_KEY="${S3_SECRET_KEY:-}"
+S3_PREFIX="${S3_PREFIX:-BypassProxy}"
 ADMIN_PORT="${ADMIN_PORT:-8088}"
 ADMIN_WAS_ACTIVE=0
 if systemctl is-active --quiet bypassproxy-admin.service 2>/dev/null; then
@@ -371,10 +407,14 @@ cp "$ROOT/scripts/update-rulesets.sh" /usr/local/sbin/bypassproxy-update-ruleset
 chmod 0755 /usr/local/sbin/bypassproxy-update-rulesets.sh
 cp "$ROOT/scripts/update-core.sh" /usr/local/sbin/bypassproxy-update-core.sh
 chmod 0755 /usr/local/sbin/bypassproxy-update-core.sh
+cp "$ROOT/scripts/backup-sync.sh" /usr/local/sbin/bypassproxy-backup-sync.sh
+chmod 0755 /usr/local/sbin/bypassproxy-backup-sync.sh
 cp "$ROOT/scripts/repair.sh" /usr/local/sbin/bypassproxy-repair.sh
 chmod 0755 /usr/local/sbin/bypassproxy-repair.sh
 cp "$ROOT/scripts/diagnose-network.sh" /usr/local/sbin/bypassproxy-diagnose-network.sh
 chmod 0755 /usr/local/sbin/bypassproxy-diagnose-network.sh
+cp "$ROOT/scripts/speed-test.sh" /usr/local/sbin/bypassproxy-speed-test.sh
+chmod 0755 /usr/local/sbin/bypassproxy-speed-test.sh
 cp "$ROOT/scripts/uninstall.sh" /usr/local/sbin/bypassproxy-uninstall.sh
 chmod 0755 /usr/local/sbin/bypassproxy-uninstall.sh
 cp "$ROOT/scripts/bp-menu.sh" /usr/local/bin/bp

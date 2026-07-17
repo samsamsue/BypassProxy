@@ -460,6 +460,13 @@ def unique_tags(outbounds: list[dict]) -> list[dict]:
     result = []
     for outbound in outbounds:
         tag = str(outbound.get("tag") or outbound.get("server") or outbound.get("type")).strip()
+        information_patterns = (
+            r"^(?:剩余流量|流量剩余|套餐到期|距离下次重置|下次重置|到期时间|有效期)",
+            r"^(?:建议|公告|通知|使用说明|使用须知)[：:]",
+            r"官网.*https?://",
+        )
+        if any(re.search(pattern, tag, re.IGNORECASE) for pattern in information_patterns):
+            continue
         base = tag
         if base in used:
             used[base] += 1

@@ -45,6 +45,7 @@ copy_script update-rulesets.sh bypassproxy-update-rulesets.sh
 copy_script update-webui.sh bypassproxy-update-webui.sh
 copy_script update-core.sh bypassproxy-update-core.sh
 copy_script diagnose-network.sh bypassproxy-diagnose-network.sh
+copy_script speed-test.sh bypassproxy-speed-test.sh
 copy_script uninstall.sh bypassproxy-uninstall.sh
 copy_script repair.sh bypassproxy-repair.sh
 

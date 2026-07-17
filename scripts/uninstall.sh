@@ -73,8 +73,10 @@ backup_existing_files() {
     /usr/local/sbin/bypassproxy-update-webui.sh \
     /usr/local/sbin/bypassproxy-update-rulesets.sh \
     /usr/local/sbin/bypassproxy-update-core.sh \
+    /usr/local/sbin/bypassproxy-backup-sync.sh \
     /usr/local/sbin/bypassproxy-repair.sh \
     /usr/local/sbin/bypassproxy-diagnose-network.sh \
+    /usr/local/sbin/bypassproxy-speed-test.sh \
     /usr/local/sbin/bypassproxy-uninstall.sh \
     /usr/local/bin/bp
   do
@@ -136,8 +138,10 @@ remove_files() {
     /usr/local/sbin/bypassproxy-update-webui.sh \
     /usr/local/sbin/bypassproxy-update-rulesets.sh \
     /usr/local/sbin/bypassproxy-update-core.sh \
+    /usr/local/sbin/bypassproxy-backup-sync.sh \
     /usr/local/sbin/bypassproxy-repair.sh \
     /usr/local/sbin/bypassproxy-diagnose-network.sh \
+    /usr/local/sbin/bypassproxy-speed-test.sh \
     /usr/local/bin/bp
 
   rm -rf \

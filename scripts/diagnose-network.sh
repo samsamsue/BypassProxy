@@ -13,6 +13,7 @@ fi
 LAN_IF="${LAN_IF:-enp3s0}"
 LAN_NET="${LAN_NET:-192.168.3.0/24}"
 LAN_IP="${LAN_IP:-192.168.3.88}"
+TUN_ENABLE="${TUN_ENABLE:-1}"
 TUN_NAME="${TUN_NAME:-sbtun0}"
 PROXY_PORT="${PROXY_PORT:-7890}"
 PANEL_PORT="${PANEL_PORT:-9091}"
@@ -58,6 +59,13 @@ iptables_has() {
   iptables "$@" >/dev/null 2>&1
 }
 
+is_enabled() {
+  case "$(printf "%s" "$1" | tr 'A-Z' 'a-z')" in
+    0|false|off|no|disable|disabled|关|关闭) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 show_title() {
   printf "\n== %s ==\n" "$1"
 }
@@ -68,7 +76,7 @@ echo "sing-box 配置：$CONFIG_JSON"
 echo "LAN 网卡：$LAN_IF"
 echo "LAN IP：$LAN_IP"
 echo "LAN 网段：$LAN_NET"
-echo "TUN 网卡：$TUN_NAME"
+echo "TUN：$(if is_enabled "$TUN_ENABLE"; then printf "开启（%s）" "$TUN_NAME"; else printf "关闭"; fi)"
 echo "代理端口：$PROXY_PORT"
 echo "面板端口：$PANEL_PORT"
 echo "DNS：$DNS1 / $DNS2"
@@ -91,7 +99,9 @@ else
   warn "没有在 $LAN_IF 上看到 LAN IP：$LAN_IP"
 fi
 
-if ip link show "$TUN_NAME" >/dev/null 2>&1; then
+if ! is_enabled "$TUN_ENABLE"; then
+  info "TUN 已关闭，跳过 TUN 网卡检查"
+elif ip link show "$TUN_NAME" >/dev/null 2>&1; then
   ok "TUN 网卡存在：$TUN_NAME"
 else
   bad "TUN 网卡不存在：$TUN_NAME；sing-box TUN 可能没起来"
@@ -123,13 +133,17 @@ else
   warn "缺少 LAN 同网卡 FORWARD 放行规则"
 fi
 
-if iptables_has -C FORWARD -i "$LAN_IF" -o "$TUN_NAME" -s "$LAN_NET" -j ACCEPT; then
+if ! is_enabled "$TUN_ENABLE"; then
+  info "TUN 已关闭，跳过 LAN -> TUN 放行检查"
+elif iptables_has -C FORWARD -i "$LAN_IF" -o "$TUN_NAME" -s "$LAN_NET" -j ACCEPT; then
   ok "LAN -> TUN 已放行"
 else
   bad "缺少 LAN -> TUN 放行规则，这是手机设网关不能上网的常见原因"
 fi
 
-if iptables_has -C FORWARD -i "$TUN_NAME" -o "$LAN_IF" -d "$LAN_NET" -j ACCEPT; then
+if ! is_enabled "$TUN_ENABLE"; then
+  info "TUN 已关闭，跳过 TUN -> LAN 回包检查"
+elif iptables_has -C FORWARD -i "$TUN_NAME" -o "$LAN_IF" -d "$LAN_NET" -j ACCEPT; then
   ok "TUN -> LAN 已放行"
 else
   bad "缺少 TUN -> LAN 回包放行规则"
