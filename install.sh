@@ -4,6 +4,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 CONF="${ROUTER_CONF:-$ROOT/router.conf}"
 BUILD="$ROOT/build"
+APP_DIR="${APP_DIR:-/opt/bypassproxy}"
 
 if [ "$(id -u)" != "0" ]; then
   echo "请用 root 运行。" >&2
@@ -104,6 +105,7 @@ LAN_IF='$(quote_value "$LAN_IF")'
 LAN_NET='$(quote_value "$LAN_NET")'
 LAN_IP='$(quote_value "$LAN_IP")'
 PROXY_PORT='$(quote_value "$PROXY_PORT")'
+SPEED_TEST_PORT='$(quote_value "$SPEED_TEST_PORT")'
 PANEL_PORT='$(quote_value "$PANEL_PORT")'
 PANEL_SECRET='$(quote_value "$PANEL_SECRET")'
 ADMIN_PORT='$(quote_value "$ADMIN_PORT")'
@@ -174,6 +176,7 @@ create_conf_interactively() {
   echo >&2
 
   PROXY_PORT="$(prompt_value "代理端口" "7890")"
+  SPEED_TEST_PORT="7891"
   PANEL_PORT="$(prompt_value "面板端口" "9091")"
   PANEL_SECRET="$(prompt_value "面板密钥" "abc123")"
   ADMIN_PORT="8088"
@@ -224,6 +227,7 @@ fi
 LAN_IF="${LAN_IF:-enp3s0}"
 LAN_NET="${LAN_NET:-192.168.3.0/24}"
 TUN_ENABLE="${TUN_ENABLE:-1}"
+SPEED_TEST_PORT="${SPEED_TEST_PORT:-7891}"
 DNS1="${DNS1:-223.5.5.5}"
 DNS2="${DNS2:-119.29.29.29}"
 SUBSCRIBE_URL="${SUBSCRIBE_URL:-}"
@@ -345,17 +349,18 @@ cleanup_legacy_names() {
 
 install_singbox
 cleanup_legacy_names
-mkdir -p "$BUILD" /etc/bypassproxy /etc/bypassproxy/rules /etc/bypassproxy/subscriptions.d /etc/bypassproxy/subscription-cache.d /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share/metacubexd /usr/local/share/bypassproxy-admin /opt/bypassproxy
+mkdir -p "$BUILD" /etc/bypassproxy /etc/bypassproxy/rules /etc/bypassproxy/subscriptions.d /etc/bypassproxy/subscription-cache.d /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share "$APP_DIR"
 
 src_conf="$(readlink -f "$CONF" 2>/dev/null || printf "%s" "$CONF")"
 dst_conf="$(readlink -f /etc/bypassproxy/router.conf 2>/dev/null || printf "%s" /etc/bypassproxy/router.conf)"
 if [ "$src_conf" != "$dst_conf" ]; then
   cp "$CONF" /etc/bypassproxy/router.conf
 fi
-cp -a "$ROOT/scripts" "$ROOT/templates" /opt/bypassproxy/
-chmod 0755 /opt/bypassproxy/scripts/*.sh /opt/bypassproxy/scripts/*.py
+rm -rf "$APP_DIR/scripts" "$APP_DIR/templates"
+cp -a "$ROOT/scripts" "$ROOT/templates" "$APP_DIR/"
+chmod 0755 "$APP_DIR"/scripts/*.sh "$APP_DIR"/scripts/*.py
 if [ -f "$ROOT/.bypassproxy-version" ]; then
-  cp "$ROOT/.bypassproxy-version" /opt/bypassproxy/.bypassproxy-version
+  cp "$ROOT/.bypassproxy-version" "$APP_DIR/.bypassproxy-version"
 fi
 
 ensure_python_yaml
@@ -369,7 +374,7 @@ if [ -n "$SUBSCRIBE_URL" ] || [ -n "$SUBSCRIBE_URLS" ] || [ "$has_managed_subscr
   SUBSCRIPTION_CACHE=/etc/bypassproxy/subscription.yaml \
   SUBSCRIPTION_DIR=/etc/bypassproxy/subscriptions.d \
   SUBSCRIPTION_CACHE_DIR=/etc/bypassproxy/subscription-cache.d \
-    /opt/bypassproxy/scripts/update-subscription.sh
+    "$APP_DIR/scripts/update-subscription.sh"
 elif [ -f "$ROOT/secrets/outbounds.json" ]; then
   cp "$ROOT/secrets/outbounds.json" /etc/bypassproxy/outbounds.json
 else
@@ -379,7 +384,7 @@ fi
 
 ROUTER_CONF=/etc/bypassproxy/router.conf \
 RULE_DIR=/etc/bypassproxy/rules \
-  /opt/bypassproxy/scripts/update-rulesets.sh
+  "$APP_DIR/scripts/update-rulesets.sh"
 
 ROUTER_CONF=/etc/bypassproxy/router.conf \
 OUTBOUNDS_JSON=/etc/bypassproxy/outbounds.json \
@@ -388,37 +393,41 @@ OUTPUT="$BUILD/config.json" \
 cp "$BUILD/config.json" /etc/sing-box/config.json
 
 if [ -d "$ROOT/webui" ]; then
-  rm -rf /usr/local/share/metacubexd/*
-  cp -a "$ROOT/webui/." /usr/local/share/metacubexd/
+  rm -rf "$APP_DIR/webui"
+  cp -a "$ROOT/webui" "$APP_DIR/webui"
 fi
 
 if [ -d "$ROOT/admin-ui" ]; then
-  rm -rf /usr/local/share/bypassproxy-admin/*
-  cp -a "$ROOT/admin-ui/." /usr/local/share/bypassproxy-admin/
+  rm -rf "$APP_DIR/admin-ui"
+  cp -a "$ROOT/admin-ui" "$APP_DIR/admin-ui"
 fi
 
-cp "$ROOT/scripts/bypassproxy-forward.sh" /usr/local/sbin/bypassproxy-forward.sh
-chmod 0755 /usr/local/sbin/bypassproxy-forward.sh
-cp "$ROOT/scripts/update-subscription.sh" /usr/local/sbin/bypassproxy-update-subscription.sh
-chmod 0755 /usr/local/sbin/bypassproxy-update-subscription.sh
-cp "$ROOT/scripts/update-webui.sh" /usr/local/sbin/bypassproxy-update-webui.sh
-chmod 0755 /usr/local/sbin/bypassproxy-update-webui.sh
-cp "$ROOT/scripts/update-rulesets.sh" /usr/local/sbin/bypassproxy-update-rulesets.sh
-chmod 0755 /usr/local/sbin/bypassproxy-update-rulesets.sh
-cp "$ROOT/scripts/update-core.sh" /usr/local/sbin/bypassproxy-update-core.sh
-chmod 0755 /usr/local/sbin/bypassproxy-update-core.sh
-cp "$ROOT/scripts/backup-sync.sh" /usr/local/sbin/bypassproxy-backup-sync.sh
-chmod 0755 /usr/local/sbin/bypassproxy-backup-sync.sh
-cp "$ROOT/scripts/repair.sh" /usr/local/sbin/bypassproxy-repair.sh
-chmod 0755 /usr/local/sbin/bypassproxy-repair.sh
-cp "$ROOT/scripts/diagnose-network.sh" /usr/local/sbin/bypassproxy-diagnose-network.sh
-chmod 0755 /usr/local/sbin/bypassproxy-diagnose-network.sh
-cp "$ROOT/scripts/speed-test.sh" /usr/local/sbin/bypassproxy-speed-test.sh
-chmod 0755 /usr/local/sbin/bypassproxy-speed-test.sh
-cp "$ROOT/scripts/uninstall.sh" /usr/local/sbin/bypassproxy-uninstall.sh
-chmod 0755 /usr/local/sbin/bypassproxy-uninstall.sh
-cp "$ROOT/scripts/bp-menu.sh" /usr/local/bin/bp
-chmod 0755 /usr/local/bin/bp
+install_link() {
+  source_path="$1"
+  target_path="$2"
+  rm -rf "$target_path"
+  ln -s "$source_path" "$target_path"
+}
+
+install_link "$APP_DIR/scripts/bypassproxy-forward.sh" /usr/local/sbin/bypassproxy-forward.sh
+install_link "$APP_DIR/scripts/update-subscription.sh" /usr/local/sbin/bypassproxy-update-subscription.sh
+install_link "$APP_DIR/scripts/update-webui.sh" /usr/local/sbin/bypassproxy-update-webui.sh
+install_link "$APP_DIR/scripts/update-rulesets.sh" /usr/local/sbin/bypassproxy-update-rulesets.sh
+install_link "$APP_DIR/scripts/update-core.sh" /usr/local/sbin/bypassproxy-update-core.sh
+install_link "$APP_DIR/scripts/backup-sync.sh" /usr/local/sbin/bypassproxy-backup-sync.sh
+install_link "$APP_DIR/scripts/repair.sh" /usr/local/sbin/bypassproxy-repair.sh
+install_link "$APP_DIR/scripts/diagnose-network.sh" /usr/local/sbin/bypassproxy-diagnose-network.sh
+install_link "$APP_DIR/scripts/speed-test.sh" /usr/local/sbin/bypassproxy-speed-test.sh
+install_link "$APP_DIR/scripts/client-test.sh" /usr/local/sbin/bypassproxy-client-test.sh
+install_link "$APP_DIR/scripts/uninstall.sh" /usr/local/sbin/bypassproxy-uninstall.sh
+install_link "$APP_DIR/scripts/bp-menu.sh" /usr/local/bin/bp
+
+if [ -d "$APP_DIR/webui" ]; then
+  install_link "$APP_DIR/webui" /usr/local/share/metacubexd
+fi
+if [ -d "$APP_DIR/admin-ui" ]; then
+  install_link "$APP_DIR/admin-ui" /usr/local/share/bypassproxy-admin
+fi
 
 cat > /etc/sysctl.d/99-bypassproxy-forward.conf <<SYSCTL
 net.ipv4.ip_forward=1

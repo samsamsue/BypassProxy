@@ -3,7 +3,6 @@ set -eu
 
 REPO="${REPO:-samsamsue/BypassProxy}"
 BRANCH="${BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/bypassproxy-installer}"
 ARCHIVE_URL="${ARCHIVE_URL:-https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz}"
 REMOTE_SHA_URL="${REMOTE_SHA_URL:-https://api.github.com/repos/${REPO}/commits/${BRANCH}}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
@@ -96,20 +95,19 @@ print(data.get("sha", ""))
 PY
 )"
 fi
-rm -rf "$INSTALL_DIR"
-mkdir -p "$INSTALL_DIR"
 tar -xzf "$archive" -C "$tmp"
 src="$(find "$tmp" -mindepth 2 -maxdepth 2 -type f -name install.sh -exec dirname {} \; | head -n 1)"
 if [ -z "$src" ]; then
   echo "下载的安装包结构不符合预期。" >&2
   exit 1
 fi
-cp -R "$src/." "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR"/scripts/*.sh 2>/dev/null || true
+chmod +x "$src/install.sh" "$src"/scripts/*.sh 2>/dev/null || true
 if [ -n "$remote_version" ]; then
-  printf "%s\n" "$remote_version" > "$INSTALL_DIR/.bypassproxy-version"
+  printf "%s\n" "$remote_version" > "$src/.bypassproxy-version"
 fi
 
-echo "安装器已下载到 $INSTALL_DIR"
-cd "$INSTALL_DIR"
-exec ./install.sh
+echo "安装包已下载，正在安装..."
+cd "$src"
+./install.sh
+
+rm -rf /opt/bypassproxy-installer /opt/bypassproxy-installer.bak.*

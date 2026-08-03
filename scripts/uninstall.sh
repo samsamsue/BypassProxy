@@ -62,6 +62,7 @@ backup_existing_files() {
     /etc/bypassproxy \
     /etc/sing-box \
     /opt/bypassproxy \
+    /opt/bypassproxy-installer \
     /usr/local/share/metacubexd \
     /usr/local/share/bypassproxy-admin \
     /etc/systemd/system/bypassproxy-forward.service \
@@ -77,6 +78,7 @@ backup_existing_files() {
     /usr/local/sbin/bypassproxy-repair.sh \
     /usr/local/sbin/bypassproxy-diagnose-network.sh \
     /usr/local/sbin/bypassproxy-speed-test.sh \
+    /usr/local/sbin/bypassproxy-client-test.sh \
     /usr/local/sbin/bypassproxy-uninstall.sh \
     /usr/local/bin/bp
   do
@@ -148,6 +150,8 @@ remove_files() {
     /etc/bypassproxy \
     /etc/sing-box \
     /opt/bypassproxy \
+    /opt/bypassproxy-installer \
+    /opt/bypassproxy-installer.bak.* \
     /usr/local/share/metacubexd \
     /usr/local/share/bypassproxy-admin
 

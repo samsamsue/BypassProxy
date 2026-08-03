@@ -113,7 +113,7 @@ sudo bp
 
 订阅/节点管理可以直接在菜单里添加、删除、启用/停用、修改订阅或单条节点链接，不需要手动编辑配置文件。
 如果配置了多个订阅，BypassProxy 会在 MetaCubeXD 里自动生成 `订阅 - 名称` 分组。顶层只保留全局自动测速和各订阅组，避免节点重复堆叠；流量、到期时间和官网提示等信息节点会自动过滤，不需要修改 MetaCubeXD 源码。
-节点下载测速会临时切换到 Global 模式，通过 `127.0.0.1:7890` 和当前选中的节点下载约 20 MB 测试文件，并显示实时进度、耗时、Mbps 和 MB/s；完成或失败后会自动恢复原模式。
+节点下载测速使用仅监听本机的专用入口 `127.0.0.1:7891`，强制通过当前选中的节点下载约 50 MB 测试文件，并显示实时进度、实际代理链、耗时、Mbps 和 MB/s。只有 sing-box 活动连接确认链路包含 `proxy` 且不包含 `direct` 时结果才有效；测速不会切换系统模式，也不会影响局域网里的其他设备。
 
 几个“更新”的区别：
 
@@ -249,3 +249,19 @@ systemctl status sing-box
 journalctl -u sing-box -f
 sing-box check -C /etc/sing-box
 ```
+
+## 安装后的目录
+
+程序文件统一放在：
+
+```text
+/opt/bypassproxy/
+  scripts/      管理和维护脚本
+  templates/    sing-box 配置模板
+  admin-ui/     BypassProxy 管理页
+  webui/        MetaCubeXD 节点面板
+```
+
+运行配置和订阅数据统一放在 `/etc/bypassproxy/`。`/usr/local/bin/bp`、
+`/usr/local/sbin/bypassproxy-*` 和 `/usr/local/share/` 下只保留指向
+`/opt/bypassproxy` 的软链接，不再保存重复副本。

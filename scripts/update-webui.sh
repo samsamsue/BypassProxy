@@ -2,7 +2,8 @@
 set -eu
 
 CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
-WEBUI_DIR="${WEBUI_DIR:-/usr/local/share/metacubexd}"
+APP_DIR="${APP_DIR:-/opt/bypassproxy}"
+WEBUI_DIR="${WEBUI_DIR:-$APP_DIR/webui}"
 WEBUI_RELEASE_API="${WEBUI_RELEASE_API:-https://api.github.com/repos/MetaCubeX/metacubexd/releases/latest}"
 WEBUI_DOWNLOAD_URL="${WEBUI_DOWNLOAD_URL:-https://github.com/MetaCubeX/metacubexd/releases/latest/download/compressed-dist.tgz}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"

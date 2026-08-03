@@ -7,14 +7,14 @@ if [ -r "$CONF" ]; then
   . "$CONF"
 fi
 
-PROXY_PORT="${PROXY_PORT:-7890}"
+SPEED_TEST_PORT="${SPEED_TEST_PORT:-7891}"
 PANEL_PORT="${PANEL_PORT:-9091}"
 PANEL_SECRET="${PANEL_SECRET:-abc123}"
-TEST_BYTES="${SPEED_TEST_BYTES:-20000000}"
+TEST_BYTES="${SPEED_TEST_BYTES:-50000000}"
 TEST_URL="${SPEED_TEST_URL:-https://speed.cloudflare.com/__down?bytes=${TEST_BYTES}}"
 
-case "$PROXY_PORT" in
-  ''|*[!0-9]*) echo "代理端口无效：$PROXY_PORT" >&2; exit 1 ;;
+case "$SPEED_TEST_PORT" in
+  ''|*[!0-9]*) echo "测速代理端口无效：$SPEED_TEST_PORT" >&2; exit 1 ;;
 esac
 case "$TEST_BYTES" in
   ''|*[!0-9]*) echo "测速大小无效：$TEST_BYTES" >&2; exit 1 ;;
@@ -27,51 +27,19 @@ if ! mkdir "$lock_dir" 2>/dev/null; then
 fi
 
 result="$(mktemp)"
-controller="http://127.0.0.1:$PANEL_PORT"
-original_mode=""
-mode_changed=0
-
-restore() {
-  if [ "$mode_changed" = "1" ] && [ -n "$original_mode" ]; then
-    curl --noproxy '*' -fsS -X PATCH \
-      -H "Authorization: Bearer $PANEL_SECRET" \
-      -H 'Content-Type: application/json' \
-      --data "{\"mode\":\"$original_mode\"}" \
-      "$controller/configs" >/dev/null 2>&1 || true
-  fi
+cleanup() {
   rm -f "$result"
   rmdir "$lock_dir" 2>/dev/null || true
 }
-trap restore EXIT INT TERM
+trap cleanup EXIT INT TERM
 
-config_json="$(curl --noproxy '*' -fsS --connect-timeout 5 -H "Authorization: Bearer $PANEL_SECRET" "$controller/configs")" || {
-  echo "无法读取 sing-box 控制接口，不能安全切换全局模式。" >&2
-  exit 1
-}
-original_mode="$(printf '%s' "$config_json" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("mode") or "Rule")')"
-if ! printf '%s' "$config_json" | python3 -c 'import json,sys; raise SystemExit(0 if "Global" in json.load(sys.stdin).get("mode-list", []) else 1)'
-then
-  echo "当前 sing-box 配置未启用 Global 模式，请先应用最新配置。" >&2
-  exit 1
-fi
-
-if [ "$original_mode" != "Global" ]; then
-  curl --noproxy '*' -fsS -X PATCH \
-    -H "Authorization: Bearer $PANEL_SECRET" \
-    -H 'Content-Type: application/json' \
-    --data '{"mode":"Global"}' \
-    "$controller/configs" >/dev/null
-  mode_changed=1
-fi
-
-echo "通过当前选中节点测速（临时 Global 模式）"
-echo "代理：http://127.0.0.1:$PROXY_PORT"
+echo "通过当前选中节点测速（本机专用代理入口）"
+echo "测速入口：http://127.0.0.1:$SPEED_TEST_PORT"
 echo "测试流量：约 $(awk -v bytes="$TEST_BYTES" 'BEGIN { printf "%.1f MB", bytes / 1000000 }')"
-echo "测速完成后恢复：$original_mode"
 echo
 
-if ! curl \
-  --proxy "http://127.0.0.1:$PROXY_PORT" \
+curl \
+  --proxy "http://127.0.0.1:$SPEED_TEST_PORT" \
   --location \
   --fail \
   --show-error \
@@ -80,12 +48,59 @@ if ! curl \
   --max-time 60 \
   --output /dev/null \
   --write-out '%{http_code}\n%{size_download}\n%{speed_download}\n%{time_total}\n' \
-  "$TEST_URL" > "$result"
-then
+  "$TEST_URL" > "$result" &
+curl_pid=$!
+
+route_check=""
+attempt=0
+while kill -0 "$curl_pid" 2>/dev/null && [ "$attempt" -lt 60 ]; do
+  connections="$(curl --noproxy '*' -fsS --connect-timeout 2 \
+    -H "Authorization: Bearer $PANEL_SECRET" \
+    "http://127.0.0.1:$PANEL_PORT/connections" 2>/dev/null || true)"
+  if [ -n "$connections" ]; then
+    route_check="$(printf '%s' "$connections" | python3 -c '
+import json, sys
+try:
+    items = json.load(sys.stdin).get("connections", [])
+except Exception:
+    items = []
+for item in items:
+    metadata = item.get("metadata") or {}
+    if metadata.get("host") != "speed.cloudflare.com" or metadata.get("type") != "mixed/speed-test-in":
+        continue
+    chains = [str(value) for value in item.get("chains") or []]
+    valid = "proxy" in chains and "direct" not in chains
+    print(("VERIFIED|" if valid else "BYPASS|") + " -> ".join(reversed(chains)))
+    break
+' 2>/dev/null || true)"
+    [ -n "$route_check" ] && break
+  fi
+  attempt=$((attempt + 1))
+  sleep 0.25
+done
+
+case "$route_check" in
+  BYPASS\|*)
+    kill "$curl_pid" 2>/dev/null || true
+    wait "$curl_pid" 2>/dev/null || true
+    echo
+    echo "测速连接未经过 proxy，已停止测试：${route_check#BYPASS|}" >&2
+    exit 1
+    ;;
+esac
+
+curl_status=0
+wait "$curl_pid" || curl_status=$?
+if [ "$curl_status" -ne 0 ]; then
   echo
   echo "测速失败。请先确认 sing-box 正常运行，并在节点面板选择可用节点。" >&2
   exit 1
 fi
+
+case "$route_check" in
+  VERIFIED\|*) echo "已确认代理链路：${route_check#VERIFIED|}" ;;
+  *) echo "无法从 sing-box 活动连接确认代理链路，本次结果作废。" >&2; exit 1 ;;
+esac
 
 http_code="$(sed -n '1p' "$result")"
 size_download="$(sed -n '2p' "$result")"

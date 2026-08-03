@@ -3,11 +3,9 @@ set -eu
 
 REPO="${REPO:-samsamsue/BypassProxy}"
 BRANCH="${BRANCH:-main}"
-INSTALL_DIR="${INSTALL_DIR:-/opt/bypassproxy-installer}"
 APP_DIR="${APP_DIR:-/opt/bypassproxy}"
 CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 ARCHIVE_URL="${ARCHIVE_URL:-https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz}"
-VERSION_FILE="${VERSION_FILE:-$INSTALL_DIR/.bypassproxy-version}"
 APP_VERSION_FILE="${APP_VERSION_FILE:-$APP_DIR/.bypassproxy-version}"
 REMOTE_SHA_URL="${REMOTE_SHA_URL:-https://api.github.com/repos/${REPO}/commits/${BRANCH}}"
 
@@ -97,16 +95,8 @@ download() {
 }
 
 read_current_version() {
-  if [ -f "$VERSION_FILE" ]; then
-    sed -n '1p' "$VERSION_FILE" 2>/dev/null || true
-    return
-  fi
   if [ -f "$APP_VERSION_FILE" ]; then
     sed -n '1p' "$APP_VERSION_FILE" 2>/dev/null || true
-    return
-  fi
-  if [ -d "$INSTALL_DIR/.git" ] && command -v git >/dev/null 2>&1; then
-    git -C "$INSTALL_DIR" rev-parse HEAD 2>/dev/null || true
   fi
 }
 
@@ -186,21 +176,11 @@ if [ -z "$src" ]; then
   exit 1
 fi
 
-backup="${INSTALL_DIR}.bak.$(date +%Y%m%d-%H%M%S)"
-if [ -d "$INSTALL_DIR" ]; then
-  cp -a "$INSTALL_DIR" "$backup"
-  echo "已备份旧安装器：$backup" >&2
-fi
+chmod +x "$src/install.sh" "$src"/scripts/*.sh "$src"/scripts/*.py 2>/dev/null || true
+printf "%s\n" "$remote_version" > "$src/.bypassproxy-version"
 
-rm -rf "$INSTALL_DIR"
-mkdir -p "$INSTALL_DIR"
-cp -R "$src/." "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/install.sh" "$INSTALL_DIR"/scripts/*.sh "$INSTALL_DIR"/scripts/*.py 2>/dev/null || true
-printf "%s\n" "$remote_version" > "$VERSION_FILE"
-mkdir -p "$APP_DIR"
-printf "%s\n" "$remote_version" > "$APP_VERSION_FILE"
-
-echo "项目脚本已更新到：$INSTALL_DIR" >&2
-echo "正在保留现有配置并重新应用..." >&2
-cd "$INSTALL_DIR"
+echo "项目更新已下载，正在保留配置并重新应用..." >&2
+cd "$src"
 ROUTER_CONF="$CONF" ./install.sh
+
+rm -rf /opt/bypassproxy-installer /opt/bypassproxy-installer.bak.*

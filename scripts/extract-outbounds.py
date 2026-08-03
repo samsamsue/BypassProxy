@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import base64
 import json
+import re
 import sys
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse

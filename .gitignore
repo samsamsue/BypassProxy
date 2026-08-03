@@ -2,6 +2,7 @@
 /secrets/
 /build/
 /backups/
+/files/
 /web-admin/node_modules/
 /scripts/__pycache__/
 *.tar.gz

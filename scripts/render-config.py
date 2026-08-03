@@ -153,7 +153,12 @@ def insert_custom_route_rules(config: dict, custom_rules: list[dict]) -> None:
     insert_at = 0
     while insert_at < len(rules) and isinstance(rules[insert_at], dict):
         rule = rules[insert_at]
-        if rule.get("action") not in {"hijack-dns", "sniff"} and not rule.get("clash_mode"):
+        is_priority_rule = (
+            rule.get("action") in {"hijack-dns", "sniff"}
+            or rule.get("inbound") == ["speed-test-in"]
+            or "clash_mode" in rule
+        )
+        if not is_priority_rule:
             break
         insert_at += 1
     rules[insert_at:insert_at] = custom_rules
@@ -216,8 +221,9 @@ def load_outbounds(path: Path) -> str:
             "tag": auto_tag,
             "outbounds": tags,
             "url": "https://www.gstatic.com/generate_204",
-            "interval": "10m",
+            "interval": "1m",
             "tolerance": 50,
+            "interrupt_exist_connections": True,
         }
     )
     subscription_selectors = []
@@ -256,6 +262,7 @@ def main() -> None:
         "LAN_NET": "192.168.3.0/24",
         "LAN_IP": "192.168.3.88",
         "PROXY_PORT": "7890",
+        "SPEED_TEST_PORT": "7891",
         "PANEL_PORT": "9091",
         "PANEL_SECRET": "abc123",
         "TUN_ENABLE": "1",

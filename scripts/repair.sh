@@ -18,36 +18,47 @@ if [ ! -f "$CONF" ]; then
 fi
 
 echo "== 准备目录和权限 =="
-mkdir -p /etc/bypassproxy/rules /etc/bypassproxy/subscriptions.d /etc/bypassproxy/subscription-cache.d /etc/sing-box "$BUILD_DIR" /usr/local/sbin /usr/local/bin "$APP_DIR/scripts"
+mkdir -p /etc/bypassproxy/rules /etc/bypassproxy/subscriptions.d /etc/bypassproxy/subscription-cache.d /etc/sing-box "$BUILD_DIR" /usr/local/sbin /usr/local/bin /usr/local/share "$APP_DIR/scripts"
 chmod 700 /etc/bypassproxy 2>/dev/null || true
 
-echo "== 修复命令入口 =="
-if [ -f "$APP_DIR/scripts/bp-menu.sh" ]; then
-  cp "$APP_DIR/scripts/bp-menu.sh" /usr/local/bin/bp
-  chmod 0755 /usr/local/bin/bp
-fi
-
-copy_script() {
+link_entry() {
   src="$APP_DIR/scripts/$1"
   dst="/usr/local/sbin/$2"
   if [ -f "$src" ]; then
-    cp "$src" "$dst"
-    chmod 0755 "$dst"
+    rm -rf "$dst"
+    ln -s "$src" "$dst"
     echo "OK $dst"
   else
     echo "WARN 缺少 $src"
   fi
 }
 
-copy_script bypassproxy-forward.sh bypassproxy-forward.sh
-copy_script update-subscription.sh bypassproxy-update-subscription.sh
-copy_script update-rulesets.sh bypassproxy-update-rulesets.sh
-copy_script update-webui.sh bypassproxy-update-webui.sh
-copy_script update-core.sh bypassproxy-update-core.sh
-copy_script diagnose-network.sh bypassproxy-diagnose-network.sh
-copy_script speed-test.sh bypassproxy-speed-test.sh
-copy_script uninstall.sh bypassproxy-uninstall.sh
-copy_script repair.sh bypassproxy-repair.sh
+echo "== 修复命令入口 =="
+if [ -f "$APP_DIR/scripts/bp-menu.sh" ]; then
+  rm -rf /usr/local/bin/bp
+  ln -s "$APP_DIR/scripts/bp-menu.sh" /usr/local/bin/bp
+fi
+
+link_entry bypassproxy-forward.sh bypassproxy-forward.sh
+link_entry update-subscription.sh bypassproxy-update-subscription.sh
+link_entry update-rulesets.sh bypassproxy-update-rulesets.sh
+link_entry update-webui.sh bypassproxy-update-webui.sh
+link_entry update-core.sh bypassproxy-update-core.sh
+link_entry backup-sync.sh bypassproxy-backup-sync.sh
+link_entry diagnose-network.sh bypassproxy-diagnose-network.sh
+link_entry speed-test.sh bypassproxy-speed-test.sh
+link_entry client-test.sh bypassproxy-client-test.sh
+link_entry uninstall.sh bypassproxy-uninstall.sh
+link_entry repair.sh bypassproxy-repair.sh
+
+if [ -d "$APP_DIR/webui" ]; then
+  rm -rf /usr/local/share/metacubexd
+  ln -s "$APP_DIR/webui" /usr/local/share/metacubexd
+fi
+if [ -d "$APP_DIR/admin-ui" ]; then
+  rm -rf /usr/local/share/bypassproxy-admin
+  ln -s "$APP_DIR/admin-ui" /usr/local/share/bypassproxy-admin
+fi
 
 if [ ! -s "$OUTBOUNDS_JSON" ]; then
   echo "== 节点文件缺失，尝试从订阅生成 =="
@@ -59,11 +70,16 @@ if [ ! -s "$OUTBOUNDS_JSON" ]; then
   fi
 fi
 
-echo "== 检查/更新分流规则 =="
-if [ -x /usr/local/sbin/bypassproxy-update-rulesets.sh ]; then
-  ROUTER_CONF="$CONF" RULE_DIR=/etc/bypassproxy/rules /usr/local/sbin/bypassproxy-update-rulesets.sh || echo "WARN 分流规则更新失败，将继续尝试使用现有规则。"
+if [ ! -s /etc/bypassproxy/rules/geosite-cn.srs ] || [ ! -s /etc/bypassproxy/rules/geoip-cn.srs ]; then
+  echo "== 分流规则缺失，尝试补齐 =="
+  if [ -x /usr/local/sbin/bypassproxy-update-rulesets.sh ]; then
+    ROUTER_CONF="$CONF" RULE_DIR=/etc/bypassproxy/rules /usr/local/sbin/bypassproxy-update-rulesets.sh
+  else
+    echo "缺少分流规则和更新脚本，无法生成有效配置。" >&2
+    exit 1
+  fi
 else
-  echo "WARN 缺少分流规则更新脚本。"
+  echo "== 使用现有分流规则，修复过程不联网更新 =="
 fi
 
 echo "== 重新生成 sing-box 配置 =="

@@ -2,45 +2,71 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
+  ArchiveRestore,
+  Bug,
   CheckCircle2,
+  Check,
+  ChevronDown,
   ExternalLink,
   Globe2,
   Gauge,
   KeyRound,
   Loader2,
+  MoreVertical,
   Network,
   PanelTop,
+  Pencil,
   Plus,
   Power,
   RefreshCcw,
+  Route,
   Save,
+  Settings,
   Shield,
   TerminalSquare,
   Trash2,
+  Wrench,
+  Wifi,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib";
 import "./styles.css";
+
+type ProxyMode = "rule" | "global" | "direct";
 
 type Status = {
   services: { singBox: string; forwardTimer: string; admin: string };
   addresses: { admin: string; adminZeroTier: string; panel: string; proxy: string };
   ports: { admin: string; panel: string; proxy: string };
   tunEnabled: boolean;
+  proxyMode: ProxyMode;
   nodeCount: number;
   subscriptionCount: number;
 };
 
 type Subscription = { id: string; name: string; url: string; enabled: boolean };
 type ActionResult = { ok: boolean; output?: string; error?: string; message?: string };
+type ClashProxy = { type: string; name?: string; now?: string; all?: string[]; history?: Array<{ time: string; delay: number }> };
+type ClashConnection = {
+  id: string;
+  metadata?: { host?: string; destinationIP?: string; destinationPort?: string | number; network?: string; type?: string };
+  upload?: number;
+  download?: number;
+  chains?: string[];
+  rule?: string;
+};
 type BasicSettings = Record<"LAN_IF" | "LAN_NET" | "LAN_IP" | "PROXY_PORT" | "PANEL_PORT" | "ADMIN_PORT" | "TUN_ENABLE" | "DNS1" | "DNS2" | "SUBSCRIBE_USER_AGENT" | "DOWNLOAD_PROXY", string>;
 type NetworkInterface = { name: string; address: string; cidr: string; network: string };
 type CustomRules = { directDomains: string[]; directIps: string[]; proxyDomains: string[]; proxyIps: string[] };
@@ -69,8 +95,21 @@ type DialogState = {
 };
 
 const tokenKey = "bypassproxy-admin-secret";
+const nodeDelayKey = "bypassproxy-node-delays";
 
-function authHeaders() {
+function storedNodeDelays(): Record<string, number | null> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(nodeDelayKey) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(([, value]) => value === null || (typeof value === "number" && Number.isFinite(value) && value > 0)),
+    ) as Record<string, number | null>;
+  } catch {
+    return {};
+  }
+}
+
+function authHeaders(): Record<string, string> {
   const token = localStorage.getItem(tokenKey) || "";
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -83,23 +122,6 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "请求失败");
   return data as T;
-}
-
-function StatusBadge({ value }: { value: string }) {
-  const active = value === "active";
-  return (
-    <span className={cn("inline-flex h-6 items-center rounded-full border px-2.5 text-xs font-medium", active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-border bg-muted text-muted-foreground")}>
-      {active ? "运行中" : value || "未知"}
-    </span>
-  );
-}
-
-function statusOk(status: Status | null) {
-  return status?.services.singBox === "active" && status?.services.forwardTimer === "active";
-}
-
-function Pill({ children, active }: { children: React.ReactNode; active?: boolean }) {
-  return <span className={cn("inline-flex h-7 items-center rounded-md border px-2.5 text-xs font-medium", active ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground")}>{children}</span>;
 }
 
 function Alert({ message }: { message: string }) {
@@ -261,60 +283,128 @@ function ActionDialog({
   );
 }
 
-function Overview({ status }: { status: Status | null }) {
-  const tiles = [
-    { label: "代理服务", value: status?.services.singBox || "unknown", detail: `${status?.nodeCount ?? 0} 个节点 · TUN ${status?.tunEnabled === false ? "已关闭" : "已开启"}`, icon: Activity },
-    { label: "旁路由转发", value: status?.services.forwardTimer || "unknown", detail: "NAT / 网关转发", icon: Network },
-    { label: "管理后台", value: status?.services.admin || "unknown", detail: `端口 ${status?.ports.admin ?? "8088"}`, icon: Shield },
+function HeaderPanel({
+  proxyMode,
+  modeBusy,
+  onModeChange,
+}: {
+  proxyMode: ProxyMode;
+  modeBusy: boolean;
+  onModeChange: (mode: ProxyMode) => void;
+}) {
+  const modes: Array<{ value: ProxyMode; label: string }> = [
+    { value: "rule", label: "规则" },
+    { value: "global", label: "全局" },
+    { value: "direct", label: "直连" },
   ];
   return (
-    <div className="grid gap-3 sm:grid-cols-3">
-      {tiles.map((tile) => {
-        const Icon = tile.icon;
-        const active = tile.value === "active";
-        return (
-          <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border bg-card p-4" key={tile.label}>
-            <div className="flex min-w-0 items-center gap-3">
-              <div className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-md", active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground")}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{tile.label}</div>
-                <div className="truncate text-xs text-muted-foreground">{tile.detail}</div>
-              </div>
-            </div>
-            <StatusBadge value={tile.value} />
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function HeaderPanel({ healthy }: { healthy: boolean }) {
-  return (
-    <header className="rounded-lg border bg-card px-4 py-4 sm:px-5">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
-          <Shield className="h-5 w-5" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="truncate text-xl font-semibold leading-tight">BypassProxy</h1>
-            <Pill active={healthy}>{healthy ? "运行正常" : "需要检查"}</Pill>
-          </div>
-          <p className="mt-1 truncate text-sm text-muted-foreground">旁路由代理管理后台</p>
-        </div>
+    <header className="flex min-w-0 items-center justify-between gap-3 py-2 sm:py-3">
+      <h1 className="min-w-0 truncate text-xl font-bold leading-none sm:text-3xl">BypassProxy</h1>
+      <div className="flex shrink-0 items-center gap-2">
+        {modeBusy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
+        <ToggleGroup
+          type="single"
+          value={proxyMode}
+          disabled={modeBusy}
+          variant="default"
+          size="sm"
+          aria-label="代理模式"
+          className="rounded-lg bg-secondary p-1"
+          onValueChange={(value) => value && onModeChange(value as ProxyMode)}
+        >
+          {modes.map((mode) => (
+            <ToggleGroupItem key={mode.value} value={mode.value} aria-label={mode.label} className="h-8 min-w-10 rounded-md px-2 text-sm data-[state=on]:bg-card data-[state=on]:text-foreground sm:min-w-14 sm:px-3">
+              {mode.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
       </div>
     </header>
   );
 }
+
+function ServiceStatus({ status, openAction }: { status: Status | null; openAction: (dialog: DialogState) => void }) {
+  const singBoxActive = status?.services.singBox === "active";
+  const forwardingActive = status?.services.forwardTimer === "active";
+  const tunActive = status?.tunEnabled !== false;
+  return (
+    <Card>
+      <CardContent className="grid min-w-0 gap-3 p-4 sm:flex sm:items-center sm:justify-between sm:px-5 sm:py-4">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <div className="truncate text-lg font-medium">Sing-box</div>
+          <div className="shrink-0 text-xs text-muted-foreground">{status?.nodeCount ?? 0} 个节点</div>
+        </div>
+        <div className="grid min-w-0 grid-cols-3 gap-1.5 sm:flex sm:justify-end sm:gap-2">
+          <Button
+            size="sm"
+            variant={singBoxActive ? "success" : "secondary"}
+            className="min-w-0 px-1.5 sm:px-2.5"
+            title={singBoxActive ? "点击暂停代理服务" : "点击启动代理服务"}
+            onClick={() => openAction(singBoxActive
+              ? { open: true, action: "pause-proxy", title: "暂停代理", description: "暂停 sing-box 代理服务，管理后台仍可使用。", confirmText: "暂停代理", dangerous: true }
+              : { open: true, action: "resume-proxy", title: "启动代理", description: "启动 sing-box，并重新应用旁路由转发规则。", confirmText: "启动代理" })}
+          >
+            {singBoxActive ? <Check data-icon="inline-start" /> : <XCircle data-icon="inline-start" />}
+            {singBoxActive ? "已启动" : "已停止"}
+          </Button>
+          <Button
+            size="sm"
+            variant={tunActive ? "success" : "secondary"}
+            className="min-w-0 px-1.5 sm:px-2.5"
+            title={tunActive ? "点击关闭 TUN" : "点击开启 TUN"}
+            onClick={() => openAction(tunActive
+              ? { open: true, action: "disable-tun", title: "关闭 TUN", description: "关闭透明代理 TUN，并重新生成配置和转发规则。", confirmText: "关闭 TUN", dangerous: true }
+              : { open: true, action: "enable-tun", title: "开启 TUN", description: "开启透明代理 TUN，并重新生成配置和转发规则。", confirmText: "开启 TUN" })}
+          >
+            {tunActive ? <Check data-icon="inline-start" /> : <XCircle data-icon="inline-start" />}
+            {tunActive ? "TUN 开启" : "TUN 关闭"}
+          </Button>
+          <Button
+            size="sm"
+            variant={forwardingActive ? "success" : "secondary"}
+            className="min-w-0 px-1.5 sm:px-2.5"
+            title={forwardingActive ? "点击停用网关转发" : "点击启用网关转发"}
+            onClick={() => openAction(forwardingActive
+              ? { open: true, action: "disable-forwarding", title: "停用网关转发", description: "停用定时转发服务，并清理 BypassProxy 写入的转发/NAT 规则。手机将不能再使用本机作为旁路由网关。", confirmText: "停用转发", dangerous: true }
+              : { open: true, action: "apply-forwarding", title: "启用网关转发", description: "启用定时转发服务，并应用旁路由转发/NAT 规则。", confirmText: "启用转发" })}
+          >
+            {forwardingActive ? <Check data-icon="inline-start" /> : <XCircle data-icon="inline-start" />}
+            {forwardingActive ? "转发开启" : "转发关闭"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+type FunctionTileProps = Omit<React.ComponentPropsWithoutRef<typeof Button>, "children" | "title"> & {
+  title: string;
+  icon: LucideIcon;
+};
+
+const FunctionTile = React.forwardRef<HTMLButtonElement, FunctionTileProps>(({ title, icon: Icon, className, ...props }, ref) => (
+  <Button
+    ref={ref}
+    variant="ghost"
+    className={cn("group h-auto min-w-0 flex-col gap-2.5 p-0 text-foreground hover:bg-transparent", className)}
+    title={title}
+    aria-label={title}
+    {...props}
+  >
+    <span className="grid size-14 place-items-center rounded-2xl bg-card transition-colors group-hover:bg-accent sm:size-16">
+      <Icon data-icon="tile" />
+    </span>
+    <span className="max-w-full truncate text-xs font-normal sm:text-sm">{title}</span>
+  </Button>
+));
+FunctionTile.displayName = "FunctionTile";
 
 function ControlCenter({
   status,
   openAction,
   openPassword,
   openBasicSettings,
+  openNodes,
   openCustomRules,
   openSync,
   showRecent,
@@ -323,6 +413,7 @@ function ControlCenter({
   openAction: (dialog: DialogState) => void;
   openPassword: () => void;
   openBasicSettings: () => void;
+  openNodes: () => void;
   openCustomRules: () => void;
   openSync: () => void;
   showRecent: () => void;
@@ -333,15 +424,22 @@ function ControlCenter({
       group: "网络维护",
       title: "网络诊断",
       description: "检查 DNS、转发、服务状态和节点连通性。",
-      icon: TerminalSquare,
+      icon: Bug,
       onClick: () => openAction({ open: true, action: "diagnose-network", title: "网络诊断", description: "检查服务、DNS、转发、订阅节点等常见问题。", confirmText: "开始诊断" }),
     },
     {
       group: "网络维护",
+      title: "旁路由测试",
+      description: "模拟家用终端使用旁路由 IP 作为网关和 DNS，验证 DNS、国内直连与海外代理链路。",
+      icon: Wifi,
+      onClick: () => openAction({ open: true, action: "test-lan-client", title: "旁路由可用性测试", description: "创建临时隔离终端，模拟设备经过旁路由访问国内和海外网站；结束后自动清理测试环境。", confirmText: "开始测试" }),
+    },
+    {
+      group: "网络维护",
       title: "节点下载测速",
-      description: "临时切换全局代理，通过当前节点下载约 20 MB 测试速度。",
+      description: "通过本机专用入口和当前节点下载约 50 MB 测试速度。",
       icon: Gauge,
-      onClick: () => openAction({ open: true, action: "speed-test", title: "节点下载测速", description: "测速期间会临时切换到 Global，强制通过当前选中节点下载约 20 MB；完成或失败后自动恢复原模式。", confirmText: "开始测速" }),
+      onClick: () => openAction({ open: true, action: "speed-test", title: "节点下载测速", description: "测速使用仅监听本机的专用代理入口，下载约 50 MB；只有 sing-box 确认连接经过当前节点后才显示结果，不会影响其他设备。", confirmText: "开始测速" }),
     },
     {
       group: "网络维护",
@@ -361,7 +459,7 @@ function ControlCenter({
       group: "网络维护",
       title: "一键修复",
       description: "修复脚本入口、重新生成配置、检查配置、重启服务并应用转发。",
-      icon: Shield,
+      icon: Wrench,
       onClick: () => openAction({ open: true, action: "repair", title: "一键修复", description: "适合服务异常、配置丢失、端口或转发规则不正常时使用。", confirmText: "开始修复" }),
     },
     {
@@ -387,10 +485,10 @@ function ControlCenter({
     },
     {
       group: "节点与分流",
-      title: "节点面板",
-      description: "打开 MetaCubeXD 查看节点、测速、连接和流量；也可以单独更新面板。",
+      title: "节点中心",
+      description: "切换节点、测试延迟和管理活动连接，高级功能仍可进入 MetaCubeXD。",
       icon: PanelTop,
-      onClick: () => panelUrl && window.open(panelUrl, "_blank", "noopener,noreferrer"),
+      onClick: openNodes,
       tools: [
         { label: "打开节点面板", icon: ExternalLink, onClick: () => panelUrl && window.open(panelUrl, "_blank", "noopener,noreferrer") },
         { label: "更新节点面板", icon: RefreshCcw, onClick: () => openAction({ open: true, action: "update-webui", title: "更新节点面板", description: "检查并更新 MetaCubeXD 静态面板。", confirmText: "更新" }) },
@@ -400,7 +498,7 @@ function ControlCenter({
       group: "节点与分流",
       title: "更新分流规则",
       description: "检查国内 geosite/geoip 规则，有变化才下载。",
-      icon: Globe2,
+      icon: Route,
       onClick: () => openAction({ open: true, action: "update-rulesets", title: "更新国内分流规则", description: "检查 geosite-cn 和 geoip-cn，有变化才会下载。", confirmText: "更新" }),
     },
     {
@@ -414,7 +512,7 @@ function ControlCenter({
       group: "设置与备份",
       title: "备份同步",
       description: "本地备份配置，也可同步到 WebDAV，换机器或误操作后可恢复。",
-      icon: Save,
+      icon: ArchiveRestore,
       onClick: openSync,
     },
     {
@@ -446,78 +544,53 @@ function ControlCenter({
       onClick: showRecent,
     },
   ];
-  const groups = [
-    { title: "常用控制", description: "代理服务的启停和恢复。", items: actions.filter((item) => item.group === "常用控制") },
-    { title: "网络维护", description: "排查网关、DNS、转发和配置问题。", items: actions.filter((item) => item.group === "网络维护") },
-    { title: "节点与分流", description: "节点面板、分流规则和自定义直连/代理。", items: actions.filter((item) => item.group === "节点与分流") },
-    { title: "设置与备份", description: "基础设置、密钥、备份同步和程序更新。", items: actions.filter((item) => item.group === "设置与备份") },
-  ];
+  const visibleTitles = ["网络诊断", "旁路由测试", "节点下载测速", "应用转发/NAT", "一键修复", "节点中心", "自定义分流", "备份同步"];
+  const visibleActions = visibleTitles.map((title) => actions.find((action) => action.title === title)).filter(Boolean) as typeof actions;
+  const compactLabels: Record<string, string> = {
+    网络诊断: "诊断",
+    旁路由测试: "旁路由测试",
+    节点下载测速: "测速",
+    检查配置: "检查",
+    "应用转发/NAT": "转发/NAT",
+    一键修复: "修复",
+    节点中心: "节点中心",
+    自定义分流: "自定规则",
+    备份同步: "备份",
+  };
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle description="需要处理问题或维护时，从这里点对应操作。">操作</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-5">
-        {groups.map((group) => (
-          <section className="grid gap-3" key={group.title}>
-            <div className="flex min-w-0 items-end justify-between gap-3 border-b pb-2">
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold">{group.title}</h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{group.description}</p>
-              </div>
-              <Pill>{group.items.length} 项</Pill>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {group.items.map((action) => {
-                const Icon = action.icon;
-                return (
-                  <button key={action.title} className="group grid min-h-[104px] gap-3 rounded-lg border bg-background p-4 text-left transition-colors hover:border-primary/40 hover:bg-accent" onClick={action.onClick}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-secondary text-secondary-foreground group-hover:bg-primary group-hover:text-primary-foreground">
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div className="truncate text-sm font-semibold">{action.title}</div>
-                      </div>
-                      {"tools" in action && action.tools ? (
-                        <div className="flex shrink-0 gap-1">
-                          {action.tools.map((tool) => {
-                            const ToolIcon = tool.icon;
-                            return (
-                              <span
-                                key={tool.label}
-                                title={tool.label}
-                                role="button"
-                                tabIndex={0}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-md border bg-background text-muted-foreground hover:bg-accent hover:text-foreground"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  tool.onClick();
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    tool.onClick();
-                                  }
-                                }}
-                              >
-                                <ToolIcon className="h-4 w-4" />
-                              </span>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                    <p className="text-sm leading-5 text-muted-foreground">{action.description}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </CardContent>
-    </Card>
+    <section className="grid gap-4">
+      <h2 className="text-xl font-medium sm:text-2xl">功能操作</h2>
+      <div className="grid grid-cols-5 gap-x-3 gap-y-5 sm:gap-x-5 lg:grid-cols-10">
+        {visibleActions.map((action) => <FunctionTile key={action.title} title={compactLabels[action.title]} icon={action.icon} onClick={action.onClick} />)}
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild><FunctionTile title="更新" icon={RefreshCcw} /></DropdownMenuTrigger>
+          <DropdownMenuContent align="center" className="w-48">
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "update-core", title: "更新 BypassProxy 脚本", description: "从 GitHub 检查并更新本项目脚本。更新过程中管理后台可能会短暂重启。", confirmText: "更新脚本" })}><RefreshCcw />更新程序</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "update-webui", title: "更新节点面板", description: "检查并更新 MetaCubeXD 静态面板。", confirmText: "更新" })}><PanelTop />更新节点面板</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "update-rulesets", title: "更新国内分流规则", description: "检查 geosite-cn 和 geoip-cn，有变化才会下载。", confirmText: "更新" })}><Globe2 />更新分流规则</DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild><FunctionTile title="设置" icon={Settings} /></DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "restart-sing-box", title: "重启 sing-box", description: "重启代理服务，通常用于配置修改后恢复服务。", confirmText: "重启" })}><Power />重启代理</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "check-config", title: "检查配置", description: "运行 sing-box check，确认当前配置是否可用。", confirmText: "检查" })}><CheckCircle2 />检查配置</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "pause-proxy", title: "暂停代理", description: "只停止 sing-box 代理服务，Web 管理页仍可打开，之后可以恢复代理。", confirmText: "暂停代理", dangerous: true })}><Power />暂停代理</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "resume-proxy", title: "恢复代理", description: "启动 sing-box 并重新应用旁路由转发规则。", confirmText: "恢复代理" })}><RefreshCcw />恢复代理</DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={openBasicSettings}><Settings />基础设置</DropdownMenuItem>
+              <DropdownMenuItem onSelect={openPassword}><KeyRound />修改密钥</DropdownMenuItem>
+              <DropdownMenuItem onSelect={showRecent}><Activity />最近结果</DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </section>
   );
 }
 
@@ -1117,6 +1190,246 @@ function BackupSyncDialog({
   );
 }
 
+function formatBytes(value = 0) {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const amount = value / (1024 ** index);
+  return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`;
+}
+
+function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl: string }) {
+  const [tab, setTab] = useState<"nodes" | "connections">("nodes");
+  const [proxies, setProxies] = useState<Record<string, ClashProxy>>({});
+  const [selectedGroup, setSelectedGroup] = useState("");
+  const [connections, setConnections] = useState<ClashConnection[]>([]);
+  const [delays, setDelays] = useState<Record<string, number | null>>(storedNodeDelays);
+  const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const [testingGroup, setTestingGroup] = useState(false);
+  const [testingNodes, setTestingNodes] = useState<string[]>([]);
+  const [switching, setSwitching] = useState("");
+  const [error, setError] = useState("");
+
+  const groups = Object.entries(proxies).filter(([, proxy]) => Array.isArray(proxy.all) && proxy.all.length > 0);
+  const groupProxy = proxies[selectedGroup];
+  const nodeNames = groupProxy?.all || [];
+  const selectedNode = groupProxy?.now || "";
+  const canSelect = groupProxy?.type?.toLowerCase() === "selector";
+
+  async function loadProxies() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api<{ proxies?: Record<string, ClashProxy> }>("/api/proxies");
+      const next = data.proxies || {};
+      setProxies(next);
+      const nextGroups = Object.entries(next).filter(([, proxy]) => Array.isArray(proxy.all) && proxy.all.length > 0);
+      setSelectedGroup((current) => {
+        if (current && next[current]) return current;
+        return nextGroups.find(([name]) => name.startsWith("订阅 - "))?.[0] || (next.proxy ? "proxy" : nextGroups[0]?.[0] || "");
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取节点失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadConnections() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api<{ connections?: ClashConnection[] }>("/api/connections");
+      setConnections(data.connections || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取连接失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadProxies();
+  }, []);
+
+  async function selectNode(name: string) {
+    if (!canSelect || name === selectedNode || switching) return;
+    setSwitching(name);
+    setError("");
+    try {
+      await api("/api/proxies/select", { method: "POST", body: JSON.stringify({ group: selectedGroup, name }) });
+      await loadProxies();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "切换节点失败");
+    } finally {
+      setSwitching("");
+    }
+  }
+
+  async function testNodes(names: string[], scope: "node" | "group" = "node") {
+    if (!names.length || testing) return;
+    const queue = [...new Set(names)];
+    setTesting(true);
+    setTestingGroup(scope === "group");
+    setTestingNodes(queue);
+    setError("");
+    let failedRequests = 0;
+
+    function saveDelay(name: string, delay: number | null) {
+      setDelays((current) => {
+        const next = { ...current, [name]: delay };
+        localStorage.setItem(nodeDelayKey, JSON.stringify(next));
+        return next;
+      });
+      setTestingNodes((current) => current.filter((item) => item !== name));
+    }
+
+    async function worker() {
+      while (queue.length) {
+        const name = queue.shift();
+        if (!name) return;
+        try {
+          const result = await api<{ delays: Record<string, number | null> }>("/api/proxies/delay", {
+            method: "POST",
+            body: JSON.stringify({ names: [name] }),
+          });
+          saveDelay(name, result.delays[name] ?? null);
+        } catch {
+          failedRequests += 1;
+          saveDelay(name, null);
+        }
+      }
+    }
+
+    try {
+      const workerCount = Math.min(6, queue.length);
+      await Promise.all(Array.from({ length: workerCount }, () => worker()));
+      if (failedRequests) setError(`${failedRequests} 个节点测速请求失败，其他节点已正常更新。`);
+    } finally {
+      setTesting(false);
+      setTestingGroup(false);
+      setTestingNodes([]);
+    }
+  }
+
+  async function closeConnection(id: string) {
+    try {
+      await api("/api/connections/close", { method: "POST", body: JSON.stringify({ id }) });
+      await loadConnections();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "关闭连接失败");
+    }
+  }
+
+  async function closeAllConnections() {
+    try {
+      await api("/api/connections/close-all", { method: "POST", body: "{}" });
+      await loadConnections();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "关闭连接失败");
+    }
+  }
+
+  function shownDelay(name: string) {
+    if (Object.prototype.hasOwnProperty.call(delays, name)) return delays[name];
+    return undefined;
+  }
+
+  function delayColor(delay: number | null | undefined) {
+    if (delay === undefined) return "text-muted-foreground";
+    if (delay === null || delay > 600) return "text-destructive";
+    if (delay > 300) return "text-warning";
+    return "text-success";
+  }
+
+  return (
+    <DialogShell
+      title="节点中心"
+      description="切换节点、测试延迟并管理当前连接。"
+      wide
+      onClose={onClose}
+      footer={
+        <>
+          {panelUrl ? <Button variant="secondary" onClick={() => window.open(panelUrl, "_blank", "noopener,noreferrer")}><ExternalLink data-icon="inline-start" />高级面板</Button> : null}
+          <Button onClick={onClose}>完成</Button>
+        </>
+      }
+    >
+      <Tabs>
+        <TabsList className="grid-cols-2 sm:grid-cols-2">
+          <TabsTrigger active={tab === "nodes"} onClick={() => { setTab("nodes"); loadProxies(); }}>节点</TabsTrigger>
+          <TabsTrigger active={tab === "connections"} onClick={() => { setTab("connections"); loadConnections(); }}>连接</TabsTrigger>
+        </TabsList>
+        {error ? <Alert message={error} /> : null}
+        <TabsContent active={tab === "nodes"}>
+          <div className="flex min-w-0 items-center gap-2">
+            <Select value={selectedGroup} onValueChange={setSelectedGroup}>
+              <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder="选择节点组" /></SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  {groups.map(([name, proxy]) => <SelectItem key={name} value={name}>{name.replace(/^订阅 - /, "")} · {proxy.all?.length || 0}</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Button size="icon" variant="secondary" busy={testingGroup} disabled={testing} title="测试当前组" aria-label="测试当前组" onClick={() => testNodes(nodeNames, "group")}>
+              {testingGroup ? null : <Gauge data-icon="inline-start" />}
+            </Button>
+            <Button size="icon" variant="secondary" title="刷新节点" aria-label="刷新节点" onClick={loadProxies}><RefreshCcw data-icon="inline-start" /></Button>
+          </div>
+          {!canSelect && selectedGroup ? <p className="text-sm text-muted-foreground">该组由 sing-box 自动选择，可测速但不能手动切换。</p> : null}
+          <div className="grid gap-2">
+            {nodeNames.map((name) => {
+              const active = name === selectedNode;
+              const delay = shownDelay(name);
+              const testingNode = testingNodes.includes(name);
+              return (
+                <div key={name} className={cn("flex min-w-0 items-center gap-2 rounded-lg bg-muted/45 p-1.5", active && "bg-accent")}>
+                  <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start px-2 py-2" disabled={!canSelect} busy={switching === name} onClick={() => selectNode(name)}>
+                    <span className="min-w-0 flex-1 truncate text-left">{name}</span>
+                    {active ? <Badge variant="success" className="shrink-0 border-0">当前</Badge> : null}
+                  </Button>
+                  <Button size="sm" variant="ghost" busy={testingNode} disabled={testing} className={cn("min-w-[68px] shrink-0 font-mono text-xs", delayColor(delay))} onClick={() => testNodes([name])}>
+                    {testingNode ? null : delay === null ? "超时" : delay === undefined || delay <= 0 ? "-" : `${delay} ms`}
+                  </Button>
+                </div>
+              );
+            })}
+            {!loading && nodeNames.length === 0 ? <div className="rounded-lg bg-muted/40 p-6 text-center text-sm text-muted-foreground">暂无可用节点</div> : null}
+            {loading ? <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在读取</div> : null}
+          </div>
+        </TabsContent>
+        <TabsContent active={tab === "connections"}>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-muted-foreground">{connections.length} 个活动连接</p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" onClick={loadConnections}><RefreshCcw data-icon="inline-start" />刷新</Button>
+              <Button size="sm" variant="destructive" disabled={!connections.length} onClick={closeAllConnections}>全部关闭</Button>
+            </div>
+          </div>
+          <div className="grid gap-2">
+            {connections.map((connection) => {
+              const host = connection.metadata?.host || connection.metadata?.destinationIP || "未知目标";
+              const port = connection.metadata?.destinationPort;
+              return (
+                <div key={connection.id} className="flex min-w-0 items-center gap-3 rounded-lg bg-muted/45 px-3 py-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{host}{port ? `:${port}` : ""}</div>
+                    <div className="mt-1 truncate text-xs text-muted-foreground">{connection.chains?.join(" → ") || connection.rule || connection.metadata?.network || "连接中"} · ↑ {formatBytes(connection.upload)} ↓ {formatBytes(connection.download)}</div>
+                  </div>
+                  <Button size="icon" variant="ghost" title="关闭连接" aria-label={`关闭 ${host} 连接`} onClick={() => closeConnection(connection.id)}><XCircle data-icon="inline-start" /></Button>
+                </div>
+              );
+            })}
+            {!loading && connections.length === 0 ? <div className="rounded-lg bg-muted/40 p-6 text-center text-sm text-muted-foreground">当前没有活动连接</div> : null}
+            {loading ? <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在读取</div> : null}
+          </div>
+        </TabsContent>
+      </Tabs>
+    </DialogShell>
+  );
+}
+
 function AddSubscriptionDialog({
   onClose,
   reload,
@@ -1130,7 +1443,6 @@ function AddSubscriptionDialog({
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
   async function create() {
     setBusy(true);
     setError("");
@@ -1259,56 +1571,54 @@ function SubscriptionCard({
   }
 
   return (
-    <Card>
-      <CardHeader className="flex-col sm:flex-row sm:items-center">
-        <CardTitle description="常用操作集中在这里：添加、修改、更新并应用。">订阅与节点</CardTitle>
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-          <Pill>{items.length} 个订阅</Pill>
-          <Button variant="secondary" onClick={openAdd}>
-            <Plus className="h-4 w-4" />
+    <section className="grid gap-4">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <h2 className="truncate text-xl font-medium sm:text-2xl">订阅与节点</h2>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button size="sm" onClick={() => openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: "重新拉取所有启用订阅，失败的订阅会继续使用上次成功缓存。", confirmText: "更新并应用", directChoice: false })}>
+            <RefreshCcw data-icon="inline-start" />
+            更新
+          </Button>
+          <Button size="sm" onClick={openAdd}>
+            <Plus data-icon="inline-start" />
             添加
           </Button>
-          <Button onClick={() => openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: "重新拉取所有启用订阅，失败的订阅会继续使用上次成功缓存。", confirmText: "更新并应用", directChoice: false })}>
-            <RefreshCcw className="h-4 w-4" />
-            更新并应用
-          </Button>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((item) => (
-            <div className={cn("grid min-w-0 gap-4 overflow-hidden rounded-lg border p-4 transition-colors", item.enabled ? "bg-background" : "border-border/70 bg-muted/45")} key={item.id}>
-              <div className="flex min-w-0 items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className={cn("truncate text-sm font-semibold", !item.enabled && "text-muted-foreground")}>{item.name}</span>
-                    <span className="shrink-0 font-mono text-xs text-muted-foreground">#{item.id}</span>
-                  </div>
-                  <div className={cn("mt-1 block w-full min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs leading-5", item.enabled ? "text-muted-foreground/75" : "text-muted-foreground/55")} title={item.url}>{item.url}</div>
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {items.map((item) => (
+          <Card className={cn("min-w-0 overflow-hidden", !item.enabled && "bg-muted/40 opacity-60")} key={item.id}>
+            <CardContent className="flex min-w-0 items-start gap-3 p-4 sm:p-5">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-base font-medium">{item.name}</span>
+                  <Badge variant="secondary" className="shrink-0 rounded-md px-2 font-mono font-normal">#{item.id}</Badge>
+                  <Badge variant={item.enabled ? "success" : "destructive"} className="shrink-0 rounded-md px-2 font-normal">{item.enabled ? "启动" : "停用"}</Badge>
                 </div>
-                <div className="shrink-0"><StatusBadge value={item.enabled ? "active" : "disabled"} /></div>
+                <div className="mt-2 block min-w-0 truncate font-mono text-xs text-muted-foreground" title={item.url}>{item.url}</div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={() => setEditingItem(item)} className={!item.enabled ? "bg-background/70" : ""}>
-                  <Save className="h-4 w-4" />
-                  编辑
-                </Button>
-                <Button size="sm" variant="secondary" onClick={() => toggle(item)} className={!item.enabled ? "bg-background/70" : ""}>
-                  <Power className="h-4 w-4" />
-                  {item.enabled ? "停用" : "启用"}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => remove(item)} className="text-destructive hover:bg-destructive/10 hover:text-destructive">
-                  <Trash2 className="h-4 w-4" />
-                  删除
-                </Button>
-              </div>
-            </div>
-          ))}
-          {items.length === 0 ? <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground sm:col-span-2 xl:col-span-3">暂无订阅</div> : null}
-        </div>
-      </CardContent>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button size="icon" variant="ghost" className="shrink-0" aria-label={`${item.name} 更多操作`}>
+                    <MoreVertical data-icon="inline-start" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-36">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onSelect={() => setEditingItem(item)}><Pencil />编辑</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => toggle(item)}><Power />{item.enabled ? "停用" : "启用"}</DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => remove(item)}><Trash2 />删除</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </CardContent>
+          </Card>
+        ))}
+        {items.length === 0 ? <Card className="lg:col-span-2"><CardContent className="p-8 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
+      </div>
       {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} /> : null}
-    </Card>
+    </section>
   );
 }
 
@@ -1320,6 +1630,7 @@ function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [basicOpen, setBasicOpen] = useState(false);
+  const [nodesOpen, setNodesOpen] = useState(false);
   const [customRulesOpen, setCustomRulesOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
@@ -1328,8 +1639,7 @@ function App() {
   const [dialogError, setDialogError] = useState("");
   const [lastResult, setLastResult] = useState("");
   const [error, setError] = useState("");
-
-  const healthy = statusOk(status);
+  const [modeBusy, setModeBusy] = useState(false);
 
   async function loadAll() {
     if (!loggedIn) return;
@@ -1348,6 +1658,23 @@ function App() {
     setDialog(next);
     setDialogOutput("");
     setDialogError("");
+  }
+
+  async function changeProxyMode(mode: ProxyMode) {
+    if (modeBusy || mode === status?.proxyMode) return;
+    setModeBusy(true);
+    setError("");
+    try {
+      const result = await api<{ ok: boolean; proxyMode: ProxyMode }>("/api/proxy-mode", {
+        method: "POST",
+        body: JSON.stringify({ mode }),
+      });
+      setStatus((current) => current ? { ...current, proxyMode: result.proxyMode } : current);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "模式切换失败");
+    } finally {
+      setModeBusy(false);
+    }
   }
 
   async function confirmAction() {
@@ -1402,21 +1729,23 @@ function App() {
   if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
 
   return (
-    <main className="min-h-screen bg-muted/35">
-      <div className="mx-auto grid w-full max-w-[1440px] gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <HeaderPanel healthy={healthy} />
+    <main className="min-h-screen bg-background">
+      <div className="mx-auto grid w-full max-w-[1120px] gap-8 px-4 py-5 sm:gap-10 sm:px-6 sm:py-8 lg:px-8">
+        <HeaderPanel
+          proxyMode={status?.proxyMode || "rule"}
+          modeBusy={modeBusy}
+          onModeChange={changeProxyMode}
+        />
 
         {error ? <Alert message={error} /> : null}
-        <Overview status={status} />
-
-        <div className="grid gap-4">
-          <SubscriptionCard items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} />
-          <ControlCenter status={status} openAction={openAction} openPassword={() => setPasswordOpen(true)} openBasicSettings={() => setBasicOpen(true)} openCustomRules={() => setCustomRulesOpen(true)} openSync={() => setSyncOpen(true)} showRecent={() => setRecentOpen(true)} />
-        </div>
+        <ServiceStatus status={status} openAction={openAction} />
+        <SubscriptionCard items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} />
+        <ControlCenter status={status} openAction={openAction} openPassword={() => setPasswordOpen(true)} openBasicSettings={() => setBasicOpen(true)} openNodes={() => setNodesOpen(true)} openCustomRules={() => setCustomRulesOpen(true)} openSync={() => setSyncOpen(true)} showRecent={() => setRecentOpen(true)} />
       </div>
       {addOpen ? <AddSubscriptionDialog onClose={() => setAddOpen(false)} reload={loadAll} setResult={setLastResult} /> : null}
       {passwordOpen ? <PasswordDialog onClose={() => setPasswordOpen(false)} onPasswordChanged={() => setLoggedIn(false)} /> : null}
       {basicOpen ? <BasicSettingsDialog onClose={() => setBasicOpen(false)} setResult={setLastResult} /> : null}
+      {nodesOpen ? <NodeCenterDialog onClose={() => setNodesOpen(false)} panelUrl={status?.addresses.panel || ""} /> : null}
       {customRulesOpen ? <CustomRulesDialog onClose={() => setCustomRulesOpen(false)} setResult={setLastResult} openAction={openAction} /> : null}
       {syncOpen ? <BackupSyncDialog onClose={() => setSyncOpen(false)} openAction={openAction} setResult={setLastResult} /> : null}
       {recentOpen ? <TextDialog title="最近结果" content={lastResult} onClose={() => setRecentOpen(false)} /> : null}

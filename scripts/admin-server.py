@@ -8,10 +8,13 @@ import signal
 import subprocess
 import time
 import ipaddress
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, quote, urlencode, urlparse
+from urllib.request import Request, urlopen
 
 
 CONF = Path(os.environ.get("ROUTER_CONF", "/etc/bypassproxy/router.conf"))
@@ -326,6 +329,15 @@ def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dic
             ("恢复代理服务", ["systemctl", "enable", "--now", "sing-box"], 40, None),
             ("应用转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env),
         ]
+    if action in {"enable-tun", "disable-tun"}:
+        enabled = action == "enable-tun"
+        save_conf_key("TUN_ENABLE", "1" if enabled else "0")
+        return [
+            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, render_env),
+            ("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None),
+            ("重启 sing-box", ["systemctl", "restart", "sing-box"], 40, None),
+            ("更新转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env),
+        ]
     if action == "update-rulesets":
         return [("更新国内分流规则", ["/usr/local/sbin/bypassproxy-update-rulesets.sh"], 180, router_env)]
     if action == "update-webui":
@@ -334,12 +346,22 @@ def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dic
         return [("更新 BypassProxy 脚本", ["/usr/local/sbin/bypassproxy-update-core.sh"], 360, router_env)]
     if action == "diagnose-network":
         return [("网络诊断", ["/usr/local/sbin/bypassproxy-diagnose-network.sh"], 180, router_env)]
+    if action == "test-lan-client":
+        return [("旁路由模拟测试", ["/usr/local/sbin/bypassproxy-client-test.sh"], 120, router_env)]
     if action == "speed-test":
         return [("节点下载测速", ["/usr/local/sbin/bypassproxy-speed-test.sh"], 90, router_env)]
     if action == "repair":
         return [("一键修复", ["/usr/local/sbin/bypassproxy-repair.sh"], 300, router_env)]
     if action == "apply-forwarding":
-        return [("应用转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env)]
+        return [
+            ("启用转发定时器", ["systemctl", "enable", "--now", "bypassproxy-forward.timer"], 40, None),
+            ("应用转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env),
+        ]
+    if action == "disable-forwarding":
+        return [
+            ("停用转发定时器", ["systemctl", "disable", "--now", "bypassproxy-forward.timer"], 40, None),
+            ("清理转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh", "stop"], 60, router_env),
+        ]
     if action == "backup-local":
         return [("创建本地备份", ["/usr/local/sbin/bypassproxy-backup-sync.sh", "backup"], 120, router_env)]
     if action == "sync-test":
@@ -457,6 +479,73 @@ def node_count() -> int:
     return len([item for item in data if isinstance(item, dict) and item.get("type") not in {"direct", "block"}])
 
 
+PROXY_MODE_API_VALUES = {"rule": "Rule", "global": "Global", "direct": "Direct"}
+
+
+def normalize_proxy_mode(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in PROXY_MODE_API_VALUES else "rule"
+
+
+def clash_api_request(method: str, path: str, payload: dict | None = None) -> dict:
+    conf = read_conf()
+    panel_port = conf.get("PANEL_PORT", "9091")
+    secret = conf.get("PANEL_SECRET", "abc123")
+    headers = {"Accept": "application/json"}
+    if secret:
+        headers["Authorization"] = f"Bearer {secret}"
+    body = None
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = Request(f"http://127.0.0.1:{panel_port}{path}", data=body, headers=headers, method=method)
+    try:
+        with urlopen(request, timeout=3) as response:
+            raw = response.read()
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"sing-box API 请求失败（HTTP {exc.code}）：{detail or exc.reason}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"无法连接 sing-box API：{exc.reason}") from exc
+    if not raw:
+        return {}
+    data = json.loads(raw.decode("utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def current_proxy_mode() -> str:
+    try:
+        return normalize_proxy_mode(clash_api_request("GET", "/configs").get("mode", "Rule"))
+    except Exception:
+        return "rule"
+
+
+def proxy_delay(name: str) -> int | None:
+    query = urlencode({"timeout": 5000, "url": "https://www.gstatic.com/generate_204"})
+    try:
+        result = clash_api_request("GET", f"/proxies/{quote(name, safe='')}/delay?{query}")
+        delay = result.get("delay")
+        return int(delay) if isinstance(delay, (int, float)) and delay > 0 else None
+    except Exception:
+        return None
+
+
+def proxy_delays(names: list[str]) -> dict[str, int | None]:
+    clean_names = list(dict.fromkeys(str(name).strip() for name in names if str(name).strip()))[:100]
+    if not clean_names:
+        return {}
+    delays = {}
+    with ThreadPoolExecutor(max_workers=min(8, len(clean_names))) as executor:
+        futures = {executor.submit(proxy_delay, name): name for name in clean_names}
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                delays[name] = future.result()
+            except Exception:
+                delays[name] = None
+    return delays
+
+
 def public_status() -> dict:
     conf = read_conf()
     lan_ip = conf.get("LAN_IP", "192.168.3.88")
@@ -479,6 +568,7 @@ def public_status() -> dict:
         },
         "ports": {"admin": admin_port, "panel": panel_port, "proxy": proxy_port},
         "tunEnabled": conf.get("TUN_ENABLE", "1").lower() not in {"0", "false", "off", "no", "disable", "disabled"},
+        "proxyMode": current_proxy_mode(),
         "nodeCount": node_count(),
         "subscriptionCount": len(list_subscriptions()),
     }
@@ -625,6 +715,22 @@ class Handler(SimpleHTTPRequestHandler):
             if not self.require_auth():
                 return
             self.send_json(public_status())
+            return
+        if parsed.path == "/api/proxies":
+            if not self.require_auth():
+                return
+            try:
+                self.send_json(clash_api_request("GET", "/proxies"))
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_GATEWAY)
+            return
+        if parsed.path == "/api/connections":
+            if not self.require_auth():
+                return
+            try:
+                self.send_json(clash_api_request("GET", "/connections"))
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.BAD_GATEWAY)
             return
         if parsed.path == "/api/subscriptions":
             if not self.require_auth():
@@ -799,6 +905,37 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("端口无效")
             save_conf_key("ADMIN_PORT", port)
             return {"ok": True, "message": "端口已保存，重启 Web 管理页后生效"}
+        if path == "/api/proxies/select":
+            group = str(data.get("group") or "").strip()
+            name = str(data.get("name") or "").strip()
+            if not group or not name:
+                raise ValueError("节点组和节点名称不能为空")
+            clash_api_request("PUT", f"/proxies/{quote(group, safe='')}", {"name": name})
+            return {"ok": True, "group": group, "name": name}
+        if path == "/api/proxies/delay":
+            names = data.get("names")
+            if not isinstance(names, list):
+                raise ValueError("节点列表格式无效")
+            return {"ok": True, "delays": proxy_delays(names)}
+        if path == "/api/connections/close-all":
+            clash_api_request("DELETE", "/connections")
+            return {"ok": True}
+        if path == "/api/connections/close":
+            connection_id = str(data.get("id") or "").strip()
+            if not connection_id:
+                raise ValueError("连接 ID 不能为空")
+            clash_api_request("DELETE", f"/connections/{quote(connection_id, safe='')}")
+            return {"ok": True}
+        if path == "/api/proxy-mode":
+            requested = str(data.get("mode") or "").strip().lower()
+            if requested not in PROXY_MODE_API_VALUES:
+                raise ValueError("代理模式无效")
+            clash_api_request("PATCH", "/configs", {"mode": PROXY_MODE_API_VALUES[requested]})
+            active = current_proxy_mode()
+            if active != requested:
+                raise RuntimeError("sing-box 没有切换到所选模式，请先应用最新配置")
+            labels = {"rule": "规则", "global": "全局", "direct": "直连"}
+            return {"ok": True, "proxyMode": active, "message": f"已切换到{labels[active]}模式"}
         if path == "/api/settings/basic":
             selected_if = str(data.get("LAN_IF") or "").strip()
             detected = detect_lan_settings(selected_if)
@@ -904,6 +1041,8 @@ class Handler(SimpleHTTPRequestHandler):
             return run_command(["/usr/local/sbin/bypassproxy-update-core.sh"], timeout=360, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/diagnose-network":
             return run_command(["/usr/local/sbin/bypassproxy-diagnose-network.sh"], timeout=180, env={"ROUTER_CONF": str(CONF)})
+        if path == "/api/actions/test-lan-client":
+            return run_command(["/usr/local/sbin/bypassproxy-client-test.sh"], timeout=120, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/speed-test":
             return run_command(["/usr/local/sbin/bypassproxy-speed-test.sh"], timeout=90, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/repair":
