@@ -1217,6 +1217,18 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
   const selectedNode = groupProxy?.now || "";
   const canSelect = groupProxy?.type?.toLowerCase() === "selector";
 
+  function effectiveGroup(next: Record<string, ClashProxy>) {
+    let group = next.proxy?.now || "";
+    const visited = new Set<string>();
+    while (group && next[group] && !visited.has(group)) {
+      visited.add(group);
+      const candidate = next[group];
+      if (Array.isArray(candidate.all) && candidate.all.length > 0) return group;
+      group = candidate.now || "";
+    }
+    return "";
+  }
+
   async function loadProxies() {
     setLoading(true);
     setError("");
@@ -1227,7 +1239,7 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
       const nextGroups = Object.entries(next).filter(([, proxy]) => Array.isArray(proxy.all) && proxy.all.length > 0);
       setSelectedGroup((current) => {
         if (current && next[current]) return current;
-        return nextGroups.find(([name]) => name.startsWith("订阅 - "))?.[0] || (next.proxy ? "proxy" : nextGroups[0]?.[0] || "");
+        return effectiveGroup(next) || nextGroups.find(([name]) => name.startsWith("订阅 - "))?.[0] || (next.proxy ? "proxy" : nextGroups[0]?.[0] || "");
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "读取节点失败");
