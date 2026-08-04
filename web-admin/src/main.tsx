@@ -1238,8 +1238,7 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
       setProxies(next);
       const nextGroups = Object.entries(next).filter(([, proxy]) => Array.isArray(proxy.all) && proxy.all.length > 0);
       setSelectedGroup((current) => {
-        if (current && next[current]) return current;
-        return effectiveGroup(next) || nextGroups.find(([name]) => name.startsWith("订阅 - "))?.[0] || (next.proxy ? "proxy" : nextGroups[0]?.[0] || "");
+        return effectiveGroup(next) || (current && next[current] ? current : null) || nextGroups.find(([name]) => name.startsWith("订阅 - "))?.[0] || (next.proxy ? "proxy" : nextGroups[0]?.[0] || "");
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "读取节点失败");
