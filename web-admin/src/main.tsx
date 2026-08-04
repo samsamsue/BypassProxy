@@ -1023,10 +1023,10 @@ function CustomRulesDialog({
       }
     >
       <Tabs>
-        <TabsList className="grid-cols-4">
+        <TabsList className="flex min-w-0 max-w-full flex-nowrap justify-start overflow-x-auto scrollbar-none">
           {tabs.map((tab) => (
-            <TabsTrigger key={tab.key} active={activeTab === tab.key} className="min-w-0 gap-0 px-1 text-xs min-[430px]:px-2 min-[430px]:text-sm" onClick={() => setActiveTab(tab.key)}>
-              {tab.title}
+            <TabsTrigger key={tab.key} active={activeTab === tab.key} className="min-w-0 max-w-[150px] shrink-0 gap-1 overflow-hidden px-2 text-xs whitespace-nowrap" onClick={() => setActiveTab(tab.key)}>
+              <span className="truncate">{tab.title}</span>
               <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground min-[430px]:ml-2 min-[430px]:text-xs">{tab.count}</span>
             </TabsTrigger>
           ))}
