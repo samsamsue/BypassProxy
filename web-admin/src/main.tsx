@@ -1211,7 +1211,11 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
   const [switching, setSwitching] = useState("");
   const [error, setError] = useState("");
 
-  const groups = Object.entries(proxies).filter(([, proxy]) => Array.isArray(proxy.all) && proxy.all.length > 0);
+  function isInternalGroup(name: string) {
+    return new Set(["proxy", "global", "direct", "reject", "block", "auto"]).has(name.trim().toLowerCase());
+  }
+
+  const groups = Object.entries(proxies).filter(([name, proxy]) => !isInternalGroup(name) && Array.isArray(proxy.all) && proxy.all.length > 0);
   const groupProxy = proxies[selectedGroup];
   const nodeNames = groupProxy?.all || [];
   const selectedNode = groupProxy?.now || "";
@@ -1223,7 +1227,11 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
     while (group && next[group] && !visited.has(group)) {
       visited.add(group);
       const candidate = next[group];
-      if (Array.isArray(candidate.all) && candidate.all.length > 0) return group;
+      if (!isInternalGroup(group) && Array.isArray(candidate.all) && candidate.all.length > 0) return group;
+      if (candidate.now && !next[candidate.now]) {
+        const matchingGroup = Object.entries(next).find(([name, proxy]) => !isInternalGroup(name) && proxy.all?.includes(candidate.now));
+        if (matchingGroup) return matchingGroup[0];
+      }
       group = candidate.now || "";
     }
     return "";
@@ -1236,7 +1244,7 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
       const data = await api<{ proxies?: Record<string, ClashProxy> }>("/api/proxies");
       const next = data.proxies || {};
       setProxies(next);
-      const nextGroups = Object.entries(next).filter(([, proxy]) => Array.isArray(proxy.all) && proxy.all.length > 0);
+      const nextGroups = Object.entries(next).filter(([name, proxy]) => !isInternalGroup(name) && Array.isArray(proxy.all) && proxy.all.length > 0);
       setSelectedGroup((current) => {
         return effectiveGroup(next) || (current && next[current] ? current : null) || nextGroups.find(([name]) => name.startsWith("订阅 - "))?.[0] || (next.proxy ? "proxy" : nextGroups[0]?.[0] || "");
       });
