@@ -30,12 +30,12 @@ function DialogContent({
 
   return (
     <DialogPortal>
-      <DialogPrimitive.Overlay className={cn("fixed inset-0 bg-slate-950/45", topLayer ? "z-[80]" : "z-40")} />
+      <DialogPrimitive.Overlay className={cn("bp-overlay fixed inset-0 bg-black/55 backdrop-blur-md", topLayer ? "z-[80]" : "z-40")} />
       <div className={cn("fixed inset-0 grid place-items-end p-2 sm:place-items-center sm:p-4", topLayer ? "z-[90]" : "z-50")}>
         <DialogPrimitive.Content
           data-bypassproxy-dialog-content
           className={cn(
-            "flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-lg border bg-background sm:max-h-[calc(100dvh-2rem)]",
+            "bp-dialog flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-[20px] bg-card sm:max-h-[calc(100dvh-2rem)]",
             wide ? "sm:max-w-[760px]" : "sm:max-w-[520px]",
             className,
           )}
@@ -50,7 +50,7 @@ function DialogContent({
 }
 
 function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("shrink-0 border-b px-5 py-4", className)} {...props} />;
+  return <div className={cn("shrink-0 px-5 py-4", className)} {...props} />;
 }
 
 function DialogBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
@@ -58,7 +58,7 @@ function DialogBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement
 }
 
 function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex shrink-0 flex-wrap justify-end gap-2 border-t px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]", className)} {...props} />;
+  return <div className={cn("flex shrink-0 flex-wrap justify-end gap-2 px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]", className)} {...props} />;
 }
 
 export { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle };

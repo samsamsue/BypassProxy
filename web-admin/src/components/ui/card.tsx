@@ -2,11 +2,11 @@ import * as React from "react";
 import { cn } from "@/lib";
 
 function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <section className={cn("rounded-lg bg-card text-card-foreground", className)} {...props} />;
+  return <section className={cn("rounded-[20px] bg-card text-card-foreground", className)} {...props} />;
 }
 
 function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex items-start justify-between gap-4 border-b px-5 py-4", className)} {...props} />;
+  return <div className={cn("flex items-start justify-between gap-4 px-5 py-4", className)} {...props} />;
 }
 
 function CardTitle({ className, children, description }: React.HTMLAttributes<HTMLDivElement> & { description?: React.ReactNode }) {

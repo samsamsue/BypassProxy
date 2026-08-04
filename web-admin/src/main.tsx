@@ -34,12 +34,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib";
 import "./styles.css";
@@ -255,16 +256,17 @@ function ActionDialog({
     >
       <div className="grid gap-4">
         {dialog.directChoice !== undefined ? (
-          <label className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-            <input
-              className="h-4 w-4 accent-primary"
-              type="checkbox"
-              checked={dialog.directChoice}
-              onChange={(event) => setDialog({ ...dialog, directChoice: event.target.checked })}
-              disabled={running}
-            />
+          <div className="flex items-center justify-between gap-4 rounded-2xl bg-muted px-4 py-3 text-sm text-foreground">
+            <span>
             本次直连下载订阅，不使用下载代理
-          </label>
+            </span>
+            <Switch
+              pressed={dialog.directChoice}
+              onPressedChange={(pressed) => setDialog({ ...dialog, directChoice: pressed })}
+              disabled={running}
+              aria-label="direct subscription download"
+            />
+          </div>
         ) : null}
         {running ? (
           <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
@@ -298,8 +300,8 @@ function HeaderPanel({
     { value: "direct", label: "直连" },
   ];
   return (
-    <header className="flex min-w-0 items-center justify-between gap-3 py-2 sm:py-3">
-      <h1 className="min-w-0 truncate text-xl font-bold leading-none sm:text-3xl">BypassProxy</h1>
+    <header className="flex min-w-0 items-start justify-between gap-2 px-4 pt-6 sm:items-center sm:gap-4 sm:px-8 sm:pt-8">
+      <h1 className="min-w-0 truncate text-[1.65rem] font-bold leading-none tracking-tight min-[430px]:text-[2.1rem] sm:text-5xl">BypassProxy</h1>
       <div className="flex shrink-0 items-center gap-2">
         {modeBusy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
         <ToggleGroup
@@ -309,11 +311,11 @@ function HeaderPanel({
           variant="default"
           size="sm"
           aria-label="代理模式"
-          className="rounded-lg bg-secondary p-1"
+          className="rounded-full bg-black p-1"
           onValueChange={(value) => value && onModeChange(value as ProxyMode)}
         >
           {modes.map((mode) => (
-            <ToggleGroupItem key={mode.value} value={mode.value} aria-label={mode.label} className="h-8 min-w-10 rounded-md px-2 text-sm data-[state=on]:bg-card data-[state=on]:text-foreground sm:min-w-14 sm:px-3">
+            <ToggleGroupItem key={mode.value} value={mode.value} aria-label={mode.label} className="h-8 min-w-11 rounded-full px-2 text-sm text-white data-[state=on]:bg-primary data-[state=on]:text-primary-foreground min-[430px]:h-10 min-[430px]:min-w-14 min-[430px]:px-3 min-[430px]:text-base sm:min-w-20 sm:px-5">
               {mode.label}
             </ToggleGroupItem>
           ))}
@@ -323,22 +325,48 @@ function HeaderPanel({
   );
 }
 
+function StatusPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <Button variant={active ? "success" : "secondary"} onClick={onClick} className="h-8 w-auto min-w-0 gap-1.5 rounded-[12px] px-2 text-sm font-normal sm:h-10 sm:gap-2 sm:rounded-[14px] sm:px-3 sm:text-base">
+      <span>{label}</span>
+      <span className="grid size-5 place-items-center rounded-full bg-black/20 sm:size-6">
+        {active ? <Check className="size-3 sm:size-4" /> : <XCircle className="size-3 sm:size-4" />}
+      </span>
+    </Button>
+  );
+}
+
 function ServiceStatus({ status, openAction }: { status: Status | null; openAction: (dialog: DialogState) => void }) {
   const singBoxActive = status?.services.singBox === "active";
   const forwardingActive = status?.services.forwardTimer === "active";
   const tunActive = status?.tunEnabled !== false;
+
+  function toggleSingBox() {
+    openAction(singBoxActive
+      ? { open: true, action: "pause-proxy", title: "暂停代理", description: "暂停 sing-box 代理服务", confirmText: "暂停代理", dangerous: true }
+      : { open: true, action: "resume-proxy", title: "鍚姩浠ｇ悊", description: "鍚姩 sing-box 骞堕噸鏂板簲鐢ㄨ浆鍙戣鍒欍€?", confirmText: "鍚姩浠ｇ悊" });
+  }
+
   return (
-    <Card>
-      <CardContent className="grid min-w-0 gap-3 p-4 sm:flex sm:items-center sm:justify-between sm:px-5 sm:py-4">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <div className="truncate text-lg font-medium">Sing-box</div>
-          <div className="shrink-0 text-xs text-muted-foreground">{status?.nodeCount ?? 0} 个节点</div>
+    <Card className="mx-5 bg-black text-primary sm:mx-8">
+      <CardContent className="flex min-w-0 items-center justify-between gap-2 px-3 py-4 min-[430px]:gap-4 min-[430px]:px-5 min-[430px]:py-5 sm:px-8 sm:py-6">
+        <div className="flex min-w-0 cursor-pointer items-baseline gap-2" role="button" tabIndex={0} title="点击切换 Sing-box 状态" onClick={toggleSingBox} onKeyDown={(event) => event.key === "Enter" && toggleSingBox()}>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="truncate text-xl font-normal min-[430px]:text-2xl">Sing-box</div>
+            {singBoxActive ? <Check className="size-7 rounded-full bg-primary p-1 text-black" /> : <XCircle className="size-7 text-destructive" />}
+          </div>
         </div>
-        <div className="grid min-w-0 grid-cols-3 gap-1.5 sm:flex sm:justify-end sm:gap-2">
+        <div className="flex min-w-0 shrink-0 items-center justify-end gap-1 min-[430px]:gap-1.5 sm:gap-3">
+          <StatusPill label="TUN" active={tunActive} onClick={() => openAction(tunActive
+            ? { open: true, action: "disable-tun", title: "关闭 TUN", description: "关闭 TUN", confirmText: "关闭 TUN", dangerous: true }
+            : { open: true, action: "enable-tun", title: "寮€鍚? TUN", description: "寮€鍚? TUN", confirmText: "寮€鍚? TUN" })} />
+          <StatusPill label="NAT" active={forwardingActive} onClick={() => openAction(forwardingActive
+            ? { open: true, action: "disable-forwarding", title: "停用 NAT", description: "停用 NAT", confirmText: "停用 NAT", dangerous: true }
+            : { open: true, action: "apply-forwarding", title: "鍚敤 NAT", description: "鍚敤 NAT", confirmText: "鍚敤 NAT" })} />
           <Button
             size="sm"
             variant={singBoxActive ? "success" : "secondary"}
-            className="min-w-0 px-1.5 sm:px-2.5"
+            className="hidden"
             title={singBoxActive ? "点击暂停代理服务" : "点击启动代理服务"}
             onClick={() => openAction(singBoxActive
               ? { open: true, action: "pause-proxy", title: "暂停代理", description: "暂停 sing-box 代理服务，管理后台仍可使用。", confirmText: "暂停代理", dangerous: true }
@@ -350,7 +378,7 @@ function ServiceStatus({ status, openAction }: { status: Status | null; openActi
           <Button
             size="sm"
             variant={tunActive ? "success" : "secondary"}
-            className="min-w-0 px-1.5 sm:px-2.5"
+            className="hidden"
             title={tunActive ? "点击关闭 TUN" : "点击开启 TUN"}
             onClick={() => openAction(tunActive
               ? { open: true, action: "disable-tun", title: "关闭 TUN", description: "关闭透明代理 TUN，并重新生成配置和转发规则。", confirmText: "关闭 TUN", dangerous: true }
@@ -362,7 +390,7 @@ function ServiceStatus({ status, openAction }: { status: Status | null; openActi
           <Button
             size="sm"
             variant={forwardingActive ? "success" : "secondary"}
-            className="min-w-0 px-1.5 sm:px-2.5"
+            className="hidden"
             title={forwardingActive ? "点击停用网关转发" : "点击启用网关转发"}
             onClick={() => openAction(forwardingActive
               ? { open: true, action: "disable-forwarding", title: "停用网关转发", description: "停用定时转发服务，并清理 BypassProxy 写入的转发/NAT 规则。手机将不能再使用本机作为旁路由网关。", confirmText: "停用转发", dangerous: true }
@@ -371,6 +399,38 @@ function ServiceStatus({ status, openAction }: { status: Status | null; openActi
             {forwardingActive ? <Check data-icon="inline-start" /> : <XCircle data-icon="inline-start" />}
             {forwardingActive ? "转发开启" : "转发关闭"}
           </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ServiceStatusV2({ status, openAction }: { status: Status | null; openAction: (dialog: DialogState) => void }) {
+  const singBoxActive = status?.services.singBox === "active";
+  const tunActive = status?.tunEnabled !== false;
+  const natActive = status?.services.forwardTimer === "active";
+
+  const run = (action: string, title: string, dangerous = false) => openAction({
+    open: true,
+    action,
+    title,
+    description: title,
+    confirmText: title,
+    dangerous,
+  });
+
+  return (
+    <Card className="mx-3 bg-black text-primary min-[430px]:mx-5 sm:mx-8">
+      <CardContent className="flex min-w-0 items-center justify-between gap-2 px-3 py-4 min-[430px]:gap-4 min-[430px]:px-5 min-[430px]:py-5 sm:px-8 sm:py-6">
+        <button type="button" className="flex min-w-0 items-center gap-2 bg-transparent p-0 text-left text-xl font-normal text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary min-[430px]:gap-3 min-[430px]:text-2xl" onClick={() => run(singBoxActive ? "pause-proxy" : "resume-proxy", singBoxActive ? "Pause sing-box" : "Start sing-box", singBoxActive)}>
+          <span className="truncate">Sing-box</span>
+          <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary text-black">
+            {singBoxActive ? <Check className="size-5" /> : <XCircle className="size-5" />}
+          </span>
+        </button>
+        <div className="flex shrink-0 items-center justify-end gap-1 min-[430px]:gap-1.5 sm:gap-3">
+          <StatusPill label="TUN" active={tunActive} onClick={() => run(tunActive ? "disable-tun" : "enable-tun", tunActive ? "Disable TUN" : "Enable TUN", tunActive)} />
+          <StatusPill label="NAT" active={natActive} onClick={() => run(natActive ? "disable-forwarding" : "apply-forwarding", natActive ? "Disable NAT" : "Enable NAT", natActive)} />
         </div>
       </CardContent>
     </Card>
@@ -391,13 +451,39 @@ const FunctionTile = React.forwardRef<HTMLButtonElement, FunctionTileProps>(({ t
     aria-label={title}
     {...props}
   >
-    <span className="grid size-14 place-items-center rounded-2xl bg-card transition-colors group-hover:bg-accent sm:size-16">
+    <span className="grid size-14 place-items-center rounded-[18px] bg-[#073800] text-primary transition-colors group-hover:bg-[#0b5200] min-[430px]:size-16 min-[430px]:rounded-[22px] sm:size-[72px]">
       <Icon data-icon="tile" />
     </span>
-    <span className="max-w-full truncate text-xs font-normal sm:text-sm">{title}</span>
+    <span className="max-w-full truncate text-sm font-normal text-white sm:text-base">{title}</span>
   </Button>
 ));
 FunctionTile.displayName = "FunctionTile";
+
+type SheetActionItem = { label: string; icon: LucideIcon; onSelect: () => void; destructive?: boolean };
+
+function SheetAction({ title, items, children }: { title: string; items: SheetActionItem[]; children: React.ReactNode }) {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>{children}</SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle className="text-xl font-medium">{title}</SheetTitle>
+          <SheetDescription className="text-sm text-muted-foreground">选择要执行的操作</SheetDescription>
+        </SheetHeader>
+        <div className="grid gap-2">
+          {items.map(({ label, icon: Icon, onSelect, destructive }) => (
+            <SheetClose asChild key={label}>
+              <Button variant="ghost" className={cn("h-12 justify-start rounded-xl bg-muted px-4 text-base hover:bg-accent", destructive && "text-destructive hover:text-destructive")} onClick={onSelect}>
+                <Icon data-icon="inline-start" />
+                {label}
+              </Button>
+            </SheetClose>
+          ))}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
 function ControlCenter({
   status,
@@ -558,37 +644,28 @@ function ControlCenter({
     备份同步: "备份",
   };
   return (
-    <section className="grid gap-4">
+    <section className="grid gap-7">
       <h2 className="text-xl font-medium sm:text-2xl">功能操作</h2>
-      <div className="grid grid-cols-5 gap-x-3 gap-y-5 sm:gap-x-5 lg:grid-cols-10">
+      <div className="grid grid-cols-4 gap-x-3 gap-y-8 min-[430px]:grid-cols-5 sm:gap-x-6 sm:gap-y-10 lg:grid-cols-10">
         {visibleActions.map((action) => <FunctionTile key={action.title} title={compactLabels[action.title]} icon={action.icon} onClick={action.onClick} />)}
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild><FunctionTile title="更新" icon={RefreshCcw} /></DropdownMenuTrigger>
-          <DropdownMenuContent align="center" className="w-48">
-            <DropdownMenuGroup>
-              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "update-core", title: "更新 BypassProxy 脚本", description: "从 GitHub 检查并更新本项目脚本。更新过程中管理后台可能会短暂重启。", confirmText: "更新脚本" })}><RefreshCcw />更新程序</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "update-webui", title: "更新节点面板", description: "检查并更新 MetaCubeXD 静态面板。", confirmText: "更新" })}><PanelTop />更新节点面板</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "update-rulesets", title: "更新国内分流规则", description: "检查 geosite-cn 和 geoip-cn，有变化才会下载。", confirmText: "更新" })}><Globe2 />更新分流规则</DropdownMenuItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild><FunctionTile title="设置" icon={Settings} /></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuGroup>
-              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "restart-sing-box", title: "重启 sing-box", description: "重启代理服务，通常用于配置修改后恢复服务。", confirmText: "重启" })}><Power />重启代理</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "check-config", title: "检查配置", description: "运行 sing-box check，确认当前配置是否可用。", confirmText: "检查" })}><CheckCircle2 />检查配置</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "pause-proxy", title: "暂停代理", description: "只停止 sing-box 代理服务，Web 管理页仍可打开，之后可以恢复代理。", confirmText: "暂停代理", dangerous: true })}><Power />暂停代理</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => openAction({ open: true, action: "resume-proxy", title: "恢复代理", description: "启动 sing-box 并重新应用旁路由转发规则。", confirmText: "恢复代理" })}><RefreshCcw />恢复代理</DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem onSelect={openBasicSettings}><Settings />基础设置</DropdownMenuItem>
-              <DropdownMenuItem onSelect={openPassword}><KeyRound />修改密钥</DropdownMenuItem>
-              <DropdownMenuItem onSelect={showRecent}><Activity />最近结果</DropdownMenuItem>
-            </DropdownMenuGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <SheetAction title="更新" items={[
+          { label: "更新程序", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "update-core", title: "更新 BypassProxy 脚本", description: "检查并更新项目脚本", confirmText: "更新脚本" }) },
+          { label: "更新节点面板", icon: PanelTop, onSelect: () => openAction({ open: true, action: "update-webui", title: "更新节点面板", description: "检查并更新 MetaCubeXD 面板", confirmText: "更新" }) },
+          { label: "更新分流规则", icon: Globe2, onSelect: () => openAction({ open: true, action: "update-rulesets", title: "更新国内分流规则", description: "检查并更新 geosite/geoip 规则", confirmText: "更新" }) },
+        ]}>
+          <FunctionTile title="更新" icon={RefreshCcw} />
+        </SheetAction>
+        <SheetAction title="设置" items={[
+          { label: "重启代理", icon: Power, onSelect: () => openAction({ open: true, action: "restart-sing-box", title: "重启 sing-box", description: "重启代理服务", confirmText: "重启" }) },
+          { label: "检查配置", icon: CheckCircle2, onSelect: () => openAction({ open: true, action: "check-config", title: "检查配置", description: "检查当前 sing-box 配置", confirmText: "检查" }) },
+          { label: "暂停代理", icon: Power, destructive: true, onSelect: () => openAction({ open: true, action: "pause-proxy", title: "暂停代理", description: "停止 sing-box 代理服务", confirmText: "暂停代理", dangerous: true }) },
+          { label: "恢复代理", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "resume-proxy", title: "恢复代理", description: "启动代理并应用转发规则", confirmText: "恢复代理" }) },
+          { label: "基础设置", icon: Settings, onSelect: openBasicSettings },
+          { label: "修改密钥", icon: KeyRound, onSelect: openPassword },
+          { label: "最近结果", icon: Activity, onSelect: showRecent },
+        ]}>
+          <FunctionTile title="设置" icon={Settings} />
+        </SheetAction>
       </div>
     </section>
   );
@@ -946,11 +1023,11 @@ function CustomRulesDialog({
       }
     >
       <Tabs>
-        <TabsList>
+        <TabsList className="grid-cols-4">
           {tabs.map((tab) => (
-            <TabsTrigger key={tab.key} active={activeTab === tab.key} onClick={() => setActiveTab(tab.key)}>
+            <TabsTrigger key={tab.key} active={activeTab === tab.key} className="min-w-0 gap-0 px-1 text-xs min-[430px]:px-2 min-[430px]:text-sm" onClick={() => setActiveTab(tab.key)}>
               {tab.title}
-              <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{tab.count}</span>
+              <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground min-[430px]:ml-2 min-[430px]:text-xs">{tab.count}</span>
             </TabsTrigger>
           ))}
         </TabsList>
@@ -1610,11 +1687,11 @@ function SubscriptionCard({
   }
 
   return (
-    <section className="grid gap-4">
+    <section className="subscription-section grid gap-6">
       <div className="flex min-w-0 items-center justify-between gap-3">
         <h2 className="truncate text-xl font-medium sm:text-2xl">订阅与节点</h2>
         <div className="flex shrink-0 items-center gap-2">
-          <Button size="sm" onClick={() => openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: "重新拉取所有启用订阅，失败的订阅会继续使用上次成功缓存。", confirmText: "更新并应用", directChoice: false })}>
+          <Button size="sm" onClick={() => openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: "重新拉取所有启用订阅，失败的订阅会继续使用上次成功缓存。", confirmText: "更新并应用", directChoice: true })}>
             <RefreshCcw data-icon="inline-start" />
             更新
           </Button>
@@ -1626,7 +1703,7 @@ function SubscriptionCard({
       </div>
       <div className="grid gap-3 lg:grid-cols-2">
         {items.map((item) => (
-          <Card className={cn("min-w-0 overflow-hidden", !item.enabled && "bg-muted/40 opacity-60")} key={item.id}>
+          <Card className={cn("min-w-0 overflow-hidden rounded-[20px] bg-[#252525]", !item.enabled && "bg-[#171717] opacity-60")} key={item.id}>
             <CardContent className="flex min-w-0 items-start gap-3 p-4 sm:p-5">
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-2">
@@ -1634,23 +1711,17 @@ function SubscriptionCard({
                   <Badge variant="secondary" className="shrink-0 rounded-md px-2 font-mono font-normal">#{item.id}</Badge>
                   <Badge variant={item.enabled ? "success" : "destructive"} className="shrink-0 rounded-md px-2 font-normal">{item.enabled ? "启动" : "停用"}</Badge>
                 </div>
-                <div className="mt-2 block min-w-0 truncate font-mono text-xs text-muted-foreground" title={item.url}>{item.url}</div>
+                <div className="mt-3 block min-w-0 truncate font-mono text-xs text-[#999]" title={item.url}>{item.url}</div>
               </div>
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <Button size="icon" variant="ghost" className="shrink-0" aria-label={`${item.name} 更多操作`}>
-                    <MoreVertical data-icon="inline-start" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-36">
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onSelect={() => setEditingItem(item)}><Pencil />编辑</DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => toggle(item)}><Power />{item.enabled ? "停用" : "启用"}</DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => remove(item)}><Trash2 />删除</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <SheetAction title={item.name} items={[
+                { label: "编辑", icon: Pencil, onSelect: () => setEditingItem(item) },
+                { label: item.enabled ? "停用" : "启用", icon: Power, onSelect: () => toggle(item) },
+                { label: "删除", icon: Trash2, destructive: true, onSelect: () => remove(item) },
+              ]}>
+                <Button size="icon" variant="ghost" className="shrink-0" aria-label={`${item.name} 更多操作`}>
+                  <MoreVertical data-icon="inline-start" />
+                </Button>
+              </SheetAction>
             </CardContent>
           </Card>
         ))}
@@ -1769,15 +1840,19 @@ function App() {
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="mx-auto grid w-full max-w-[1120px] gap-8 px-4 py-5 sm:gap-10 sm:px-6 sm:py-8 lg:px-8">
-        <HeaderPanel
-          proxyMode={status?.proxyMode || "rule"}
-          modeBusy={modeBusy}
-          onModeChange={changeProxyMode}
-        />
+      <div className="mx-auto grid w-full max-w-[1120px] gap-12 px-4 pb-10 sm:gap-14 sm:px-6 sm:pb-14 lg:px-8">
+        <section className="-mx-4 flex min-h-[220px] flex-col overflow-hidden rounded-b-[20px] bg-[linear-gradient(145deg,#00B578_0%,#00E295_100%)] min-[430px]:min-h-[260px] sm:-mx-6 sm:min-h-[300px] lg:-mx-8">
+          <HeaderPanel
+            proxyMode={status?.proxyMode || "rule"}
+            modeBusy={modeBusy}
+            onModeChange={changeProxyMode}
+          />
+          <div className="mt-auto pb-4 min-[430px]:pb-5 sm:pb-6">
+            <ServiceStatusV2 status={status} openAction={openAction} />
+          </div>
+        </section>
 
         {error ? <Alert message={error} /> : null}
-        <ServiceStatus status={status} openAction={openAction} />
         <SubscriptionCard items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} />
         <ControlCenter status={status} openAction={openAction} openPassword={() => setPasswordOpen(true)} openBasicSettings={() => setBasicOpen(true)} openNodes={() => setNodesOpen(true)} openCustomRules={() => setCustomRulesOpen(true)} openSync={() => setSyncOpen(true)} showRecent={() => setRecentOpen(true)} />
       </div>
