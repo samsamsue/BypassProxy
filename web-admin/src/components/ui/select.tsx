@@ -23,13 +23,14 @@ function markSelectOpen(open: boolean) {
     clearSelectTimer = window.setTimeout(() => {
       document.body.removeAttribute(selectOpenAttr);
       clearSelectTimer = undefined;
-    }, 120);
+    }, 1000);
   }
 }
 
 function Select({ onOpenChange, ...props }: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>) {
   return (
     <SelectPrimitive.Root
+      modal={false}
       onOpenChange={(open) => {
         markSelectOpen(open);
         onOpenChange?.(open);

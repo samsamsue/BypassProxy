@@ -1209,6 +1209,7 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
   const [testingGroup, setTestingGroup] = useState(false);
   const [testingNodes, setTestingNodes] = useState<string[]>([]);
   const [switching, setSwitching] = useState("");
+  const [applyingGroup, setApplyingGroup] = useState(false);
   const [error, setError] = useState("");
 
   function isInternalGroup(name: string) {
@@ -1236,6 +1237,8 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
     }
     return "";
   }
+
+  const activeGroup = effectiveGroup(proxies);
 
   async function loadProxies() {
     setLoading(true);
@@ -1283,6 +1286,20 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
       setError(err instanceof Error ? err.message : "切换节点失败");
     } finally {
       setSwitching("");
+    }
+  }
+
+  async function applyGroup() {
+    if (!selectedGroup || !proxies.proxy?.all?.includes(selectedGroup) || applyingGroup) return;
+    setApplyingGroup(true);
+    setError("");
+    try {
+      await api("/api/proxies/select", { method: "POST", body: JSON.stringify({ group: "proxy", name: selectedGroup }) });
+      await loadProxies();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "应用分组失败");
+    } finally {
+      setApplyingGroup(false);
     }
   }
 
@@ -1391,6 +1408,9 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
                 </SelectGroup>
               </SelectContent>
             </Select>
+            <Button size="sm" variant="secondary" busy={applyingGroup} disabled={applyingGroup || !proxies.proxy?.all?.includes(selectedGroup)} title="应用当前分组" onClick={applyGroup}>
+              <Check data-icon="inline-start" />应用组
+            </Button>
             <Button size="icon" variant="secondary" busy={testingGroup} disabled={testing} title="测试当前组" aria-label="测试当前组" onClick={() => testNodes(nodeNames, "group")}>
               {testingGroup ? null : <Gauge data-icon="inline-start" />}
             </Button>
@@ -1399,7 +1419,7 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
           {!canSelect && selectedGroup ? <p className="text-sm text-muted-foreground">该组由 sing-box 自动选择，可测速但不能手动切换。</p> : null}
           <div className="grid gap-2">
             {nodeNames.map((name) => {
-              const active = name === selectedNode;
+              const active = selectedGroup === activeGroup && name === selectedNode;
               const delay = shownDelay(name);
               const testingNode = testingNodes.includes(name);
               return (
