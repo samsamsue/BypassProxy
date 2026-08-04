@@ -934,8 +934,12 @@ class Handler(SimpleHTTPRequestHandler):
             active = current_proxy_mode()
             if active != requested:
                 raise RuntimeError("sing-box 没有切换到所选模式，请先应用最新配置")
+            try:
+                clash_api_request("DELETE", "/connections")
+            except Exception:
+                pass
             labels = {"rule": "规则", "global": "全局", "direct": "直连"}
-            return {"ok": True, "proxyMode": active, "message": f"已切换到{labels[active]}模式"}
+            return {"ok": True, "proxyMode": active, "message": f"已切换到{labels[active]}模式，旧连接已清理"}
         if path == "/api/settings/basic":
             selected_if = str(data.get("LAN_IF") or "").strip()
             detected = detect_lan_settings(selected_if)

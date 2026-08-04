@@ -15,6 +15,7 @@ LAN_NET="${LAN_NET:-192.168.3.0/24}"
 LAN_IP="${LAN_IP:-192.168.3.88}"
 TUN_ENABLE="${TUN_ENABLE:-1}"
 TUN_NAME="${TUN_NAME:-sbtun0}"
+TUN_DNS="${TUN_DNS:-28.0.0.2}"
 PROXY_PORT="${PROXY_PORT:-7890}"
 PANEL_PORT="${PANEL_PORT:-9091}"
 DNS1="${DNS1:-223.5.5.5}"
@@ -77,6 +78,7 @@ echo "LAN 网卡：$LAN_IF"
 echo "LAN IP：$LAN_IP"
 echo "LAN 网段：$LAN_NET"
 echo "TUN：$(if is_enabled "$TUN_ENABLE"; then printf "开启（%s）" "$TUN_NAME"; else printf "关闭"; fi)"
+echo "TUN DNS：$TUN_DNS"
 echo "代理端口：$PROXY_PORT"
 echo "面板端口：$PANEL_PORT"
 echo "DNS：$DNS1 / $DNS2"
@@ -159,6 +161,22 @@ if iptables_has -t mangle -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dpor
   ok "UDP 443 保护规则已存在"
 else
   warn "缺少 UDP 443 保护规则；部分 App/视频/游戏可能受影响"
+fi
+
+if ! is_enabled "$TUN_ENABLE"; then
+  info "TUN 已关闭，跳过网关 DNS 劫持检查"
+elif iptables_has -t nat -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -d "$LAN_IP" -p udp --dport 53 -j DNAT --to-destination "$TUN_DNS"; then
+  ok "网关 DNS UDP 劫持已存在"
+else
+  warn "缺少网关 DNS UDP 劫持；手机 DNS 填 $LAN_IP 时可能无法解析"
+fi
+
+if ! is_enabled "$TUN_ENABLE"; then
+  info "TUN 已关闭，跳过网关 DNS TCP 劫持检查"
+elif iptables_has -t nat -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -d "$LAN_IP" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS"; then
+  ok "网关 DNS TCP 劫持已存在"
+else
+  warn "缺少网关 DNS TCP 劫持；部分大响应 DNS 查询可能失败"
 fi
 
 show_title "sing-box 服务和监听"

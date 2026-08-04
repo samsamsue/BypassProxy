@@ -114,9 +114,14 @@ def clean_rule_values(values, kind: str) -> list[str]:
     return result
 
 
-def load_custom_route_rules(path: Path) -> list[dict]:
+def load_custom_rules(path: Path) -> dict[str, list[str]]:
     if not path.exists():
-        return []
+        return {
+            "proxy_domains": [],
+            "proxy_ips": [],
+            "direct_domains": [],
+            "direct_ips": [],
+        }
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except Exception as exc:
@@ -129,15 +134,24 @@ def load_custom_route_rules(path: Path) -> list[dict]:
     direct_domains = clean_rule_values(data.get("directDomains") or data.get("direct_domains"), "domain")
     direct_ips = clean_rule_values(data.get("directIps") or data.get("direct_ips"), "ip")
 
+    return {
+        "proxy_domains": proxy_domains,
+        "proxy_ips": proxy_ips,
+        "direct_domains": direct_domains,
+        "direct_ips": direct_ips,
+    }
+
+
+def build_custom_route_rules(custom_rules: dict[str, list[str]]) -> list[dict]:
     rules = []
-    if proxy_domains:
-        rules.append({"domain_suffix": proxy_domains, "outbound": "proxy"})
-    if proxy_ips:
-        rules.append({"ip_cidr": proxy_ips, "outbound": "proxy"})
-    if direct_domains:
-        rules.append({"domain_suffix": direct_domains, "outbound": "direct"})
-    if direct_ips:
-        rules.append({"ip_cidr": direct_ips, "outbound": "direct"})
+    if custom_rules["proxy_domains"]:
+        rules.append({"domain_suffix": custom_rules["proxy_domains"], "outbound": "proxy"})
+    if custom_rules["proxy_ips"]:
+        rules.append({"ip_cidr": custom_rules["proxy_ips"], "outbound": "proxy"})
+    if custom_rules["direct_domains"]:
+        rules.append({"domain_suffix": custom_rules["direct_domains"], "outbound": "direct"})
+    if custom_rules["direct_ips"]:
+        rules.append({"ip_cidr": custom_rules["direct_ips"], "outbound": "direct"})
     return rules
 
 
@@ -162,6 +176,28 @@ def insert_custom_route_rules(config: dict, custom_rules: list[dict]) -> None:
             break
         insert_at += 1
     rules[insert_at:insert_at] = custom_rules
+
+
+def insert_custom_dns_rules(config: dict, custom_rules: dict[str, list[str]]) -> None:
+    dns = config.get("dns")
+    if not isinstance(dns, dict):
+        raise SystemExit("配置模板缺少 dns 对象")
+    rules = dns.get("rules")
+    if not isinstance(rules, list):
+        raise SystemExit("配置模板缺少 dns.rules 列表")
+
+    additions = []
+    if custom_rules["proxy_domains"]:
+        additions.append({"domain_suffix": custom_rules["proxy_domains"], "server": "remote"})
+    if custom_rules["direct_domains"]:
+        additions.append({"domain_suffix": custom_rules["direct_domains"], "server": "cn"})
+    if not additions:
+        return
+
+    insert_at = 0
+    while insert_at < len(rules) and isinstance(rules[insert_at], dict) and "clash_mode" in rules[insert_at]:
+        insert_at += 1
+    rules[insert_at:insert_at] = additions
 
 
 def is_enabled(value: str) -> bool:
@@ -285,7 +321,9 @@ def main() -> None:
     config = json.loads(template)
     apply_tun_switch(config, is_enabled(values.get("TUN_ENABLE", "1")))
     custom_rules_path = Path(os.environ.get("CUSTOM_RULES_JSON", values.get("CUSTOM_RULES_JSON", "/etc/bypassproxy/custom-rules.json")))
-    insert_custom_route_rules(config, load_custom_route_rules(custom_rules_path))
+    custom_rules = load_custom_rules(custom_rules_path)
+    insert_custom_dns_rules(config, custom_rules)
+    insert_custom_route_rules(config, build_custom_route_rules(custom_rules))
     rendered = json.dumps(config, ensure_ascii=False, indent=2) + "\n"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(rendered, encoding="utf-8")

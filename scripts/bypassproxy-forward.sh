@@ -37,11 +37,20 @@ cleanup_forwarding() {
   while iptables -t nat -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -d "$LAN_IP" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null; do
     iptables -t nat -D PREROUTING -i "$LAN_IF" -s "$LAN_NET" -d "$LAN_IP" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS"
   done
+  while iptables -t nat -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null; do
+    iptables -t nat -D PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 53 -j DNAT --to-destination "$TUN_DNS"
+  done
+  while iptables -t nat -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null; do
+    iptables -t nat -D PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS"
+  done
   while iptables -t nat -C POSTROUTING -s "$LAN_NET" -o "$LAN_IF" -j MASQUERADE 2>/dev/null; do
     iptables -t nat -D POSTROUTING -s "$LAN_NET" -o "$LAN_IF" -j MASQUERADE
   done
   while iptables -t mangle -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 443 -j RETURN 2>/dev/null; do
     iptables -t mangle -D PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 443 -j RETURN
+  done
+  while iptables -t mangle -C FORWARD -s "$LAN_NET" -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null; do
+    iptables -t mangle -D FORWARD -s "$LAN_NET" -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
   done
 }
 
@@ -106,11 +115,19 @@ if is_enabled "$TUN_ENABLE"; then
 
   iptables -t nat -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -d "$LAN_IP" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null \
     || iptables -t nat -I PREROUTING 1 -i "$LAN_IF" -s "$LAN_NET" -d "$LAN_IP" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS"
+
+  iptables -t nat -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null \
+    || iptables -t nat -I PREROUTING 1 -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 53 -j DNAT --to-destination "$TUN_DNS"
+
+  iptables -t nat -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null \
+    || iptables -t nat -I PREROUTING 1 -i "$LAN_IF" -s "$LAN_NET" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS"
 else
   iptables -D FORWARD -i "$LAN_IF" -o "$TUN_NAME" -s "$LAN_NET" -j ACCEPT 2>/dev/null || true
   iptables -D FORWARD -i "$TUN_NAME" -o "$LAN_IF" -d "$LAN_NET" -j ACCEPT 2>/dev/null || true
   iptables -t nat -D PREROUTING -i "$LAN_IF" -s "$LAN_NET" -d "$LAN_IP" -p udp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null || true
   iptables -t nat -D PREROUTING -i "$LAN_IF" -s "$LAN_NET" -d "$LAN_IP" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null || true
+  iptables -t nat -D PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null || true
+  iptables -t nat -D PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p tcp --dport 53 -j DNAT --to-destination "$TUN_DNS" 2>/dev/null || true
 fi
 
 iptables -t nat -C POSTROUTING -s "$LAN_NET" -o "$LAN_IF" -j MASQUERADE 2>/dev/null \
@@ -118,3 +135,6 @@ iptables -t nat -C POSTROUTING -s "$LAN_NET" -o "$LAN_IF" -j MASQUERADE 2>/dev/n
 
 iptables -t mangle -C PREROUTING -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 443 -j RETURN 2>/dev/null \
   || iptables -t mangle -I PREROUTING 1 -i "$LAN_IF" -s "$LAN_NET" -p udp --dport 443 -j RETURN
+
+iptables -t mangle -C FORWARD -s "$LAN_NET" -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu 2>/dev/null \
+  || iptables -t mangle -I FORWARD 1 -s "$LAN_NET" -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
