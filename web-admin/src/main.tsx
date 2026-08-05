@@ -62,7 +62,7 @@ type ActionResult = { ok: boolean; output?: string; error?: string; message?: st
 type ClashProxy = { type: string; name?: string; now?: string; all?: string[]; history?: Array<{ time: string; delay: number }> };
 type ClashConnection = {
   id: string;
-  metadata?: { host?: string; destinationIP?: string; destinationPort?: string | number; network?: string; type?: string };
+  metadata?: { host?: string; sourceIP?: string; sourcePort?: string | number; destinationIP?: string; destinationPort?: string | number; network?: string; type?: string };
   upload?: number;
   download?: number;
   chains?: string[];
@@ -300,8 +300,8 @@ function HeaderPanel({
     { value: "direct", label: "直连" },
   ];
   return (
-    <header className="flex min-w-0 items-start justify-between gap-2 px-4 pt-6 sm:items-center sm:gap-4 sm:px-8 sm:pt-8">
-      <h1 className="min-w-0 truncate text-[1.65rem] font-bold leading-none tracking-tight min-[430px]:text-[2.1rem] sm:text-5xl">BypassProxy</h1>
+    <header className="flex min-w-0 flex-wrap items-start justify-between gap-2 px-4 pt-6 sm:items-center sm:gap-4 sm:px-8 sm:pt-8">
+      <h1 className="shrink-0 whitespace-nowrap text-[1.65rem] font-bold leading-none tracking-tight text-primary min-[430px]:text-[2.1rem] sm:text-5xl">BypassProxy</h1>
       <div className="flex shrink-0 items-center gap-2">
         {modeBusy ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
         <ToggleGroup
@@ -437,6 +437,162 @@ function ServiceStatusV2({ status, openAction }: { status: Status | null; openAc
   );
 }
 
+function LegacyNetworkOverview({ status }: { status: Status | null }) {
+  const singBoxActive = status?.services.singBox === "active";
+  const tunActive = status?.tunEnabled !== false;
+  const natActive = status?.services.forwardTimer === "active";
+  const flowActive = singBoxActive && tunActive && natActive;
+  const modeLabel = status?.proxyMode === "global" ? "全局" : status?.proxyMode === "direct" ? "直连" : "规则";
+
+  const directPath = flowActive && status?.proxyMode !== "global";
+  const proxyPath = flowActive && status?.proxyMode !== "direct";
+  const Node = ({ icon: Icon, label, detail, active, className }: { icon: LucideIcon; label: string; detail: string; active: boolean; className?: string }) => (
+    <div className={cn("bp-topology-node", active && "is-active", className)}>
+      <div className="bp-topology-icon"><Icon className="size-5 sm:size-6" /></div>
+      <div className="min-w-0">
+        <div className="truncate text-xs font-medium text-white sm:text-sm">{label}</div>
+        <div className="truncate text-[10px] text-white/45 sm:text-xs">{detail}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mx-3 my-4 min-w-0 px-3 py-6 min-[430px]:mx-5 min-[430px]:my-5 min-[430px]:px-4 min-[430px]:py-7 sm:mx-8 sm:my-6 sm:px-6 sm:py-8" aria-label="网络原理概览">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-white/70 sm:text-sm">
+          <Activity className={cn("size-4", flowActive && "text-primary animate-pulse")} />
+          <span>实时网络链路</span>
+        </div>
+        <div className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[10px] text-white/70 sm:text-xs">{modeLabel}模式</div>
+      </div>
+      <div className="bp-topology-scroll">
+        <div className="bp-topology">
+        <Node icon={Wifi} label="局域网设备" detail="手机 / 电脑" active={natActive} />
+        <div className={cn("bp-topology-path", natActive && "is-active")}><span /></div>
+        <Node icon={Network} label="BypassProxy" detail="网关转发" active={natActive} />
+        <div className={cn("bp-topology-path", singBoxActive && tunActive && "is-active")}><span /></div>
+        <Node icon={Shield} label="sing-box TUN" detail={tunActive ? "透明代理" : "已关闭"} active={singBoxActive && tunActive} />
+        <div className="bp-topology-split">
+          <div className={cn("bp-topology-path", directPath && "is-active")}><span /></div>
+          <Node icon={Route} label="直连" detail="国内流量" active={directPath} />
+          <div className={cn("bp-topology-path", proxyPath && "is-active")}><span /></div>
+          <Node icon={Shield} label="代理节点" detail="海外流量" active={proxyPath} />
+        </div>
+        <div className={cn("bp-topology-path", flowActive && "is-active")}><span /></div>
+          <Node icon={Globe2} label="互联网" detail="目标服务" active={flowActive} />
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-white/45 sm:text-xs">
+        <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", natActive ? "bg-primary" : "bg-white/25")} />网关</span>
+        <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", tunActive ? "bg-primary" : "bg-white/25")} />TUN</span>
+        <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", singBoxActive ? "bg-primary" : "bg-white/25")} />代理服务</span>
+        <span className="ml-auto">{flowActive ? "链路正常" : "链路未完整建立"}</span>
+      </div>
+    </div>
+  );
+}
+
+function LegacyNetworkOverviewV2({ status, openAction }: { status: Status | null; openAction: (dialog: DialogState) => void }) {
+  const singBoxActive = status?.services.singBox === "active";
+  const tunActive = status?.tunEnabled !== false;
+  const natActive = status?.services.forwardTimer === "active";
+  const flowActive = singBoxActive && tunActive && natActive;
+  const directPath = flowActive && status?.proxyMode !== "global";
+  const proxyPath = flowActive && status?.proxyMode !== "direct";
+  const modeLabel = status?.proxyMode === "global" ? "全局" : status?.proxyMode === "direct" ? "直连" : "规则";
+  const [activeDevices, setActiveDevices] = useState<string[]>([]);
+
+  useEffect(() => {
+    let disposed = false;
+    async function loadActiveDevices() {
+      try {
+        const data = await api<{ connections?: ClashConnection[] }>("/api/connections");
+        const devices = [...new Set((data.connections || [])
+          .map((connection) => connection.metadata?.sourceIP)
+          .filter((address): address is string => Boolean(address) && address !== "127.0.0.1" && address !== "::1"))];
+        if (!disposed) setActiveDevices(devices);
+      } catch {
+        if (!disposed) setActiveDevices([]);
+      }
+    }
+    loadActiveDevices();
+    const timer = window.setInterval(loadActiveDevices, 4000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  const run = (action: string, title: string, dangerous = false) => openAction({ open: true, action, title, description: title, confirmText: title, dangerous });
+  const Node = ({ icon: Icon, label, detail, active, className }: { icon: LucideIcon; label: string; detail: string; active: boolean; className: string }) => (
+    <div className={cn("bp-graph-node", active && "is-active", className)} title={`${label}：${detail}`}>
+      <div className="bp-graph-icon"><Icon className="size-5 sm:size-6" /></div>
+      <div className="min-w-0 text-center">
+        <div className="truncate text-xs font-medium text-white sm:text-sm">{label}</div>
+        <div className="bp-graph-detail truncate text-[10px] text-white/45 sm:text-xs">{detail}</div>
+      </div>
+    </div>
+  );
+
+  const Path = ({ id, d, active }: { id: string; d: string; active: boolean }) => (
+    <>
+      <path id={id} className={cn("bp-graph-path", active && "is-active")} d={d} vectorEffect="non-scaling-stroke">
+        {active ? <animate attributeName="stroke-dashoffset" values="0;-14" dur="1.8s" repeatCount="indefinite" /> : null}
+      </path>
+      {active ? (
+        <>
+          <circle className="bp-photon" r="0.65">
+            <animate attributeName="opacity" values="0.15;0.8;0.15" dur="1.2s" repeatCount="indefinite" />
+            <animateMotion dur="1.2s" repeatCount="indefinite" rotate="auto"><mpath href={`#${id}`} /></animateMotion>
+          </circle>
+        </>
+      ) : null}
+    </>
+  );
+
+  return (
+    <div className="mx-3 my-4 min-w-0 px-3 py-6 min-[430px]:mx-5 min-[430px]:my-5 min-[430px]:px-4 min-[430px]:py-7 sm:mx-8 sm:my-6 sm:px-6 sm:py-8" aria-label="网络原理概览">
+      <div className="hidden">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-white/70 sm:text-sm">
+          <Activity className={cn("size-4", flowActive && "animate-pulse text-primary")} />
+          <span>实时网络链路</span>
+        </div>
+        <div className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-[10px] text-white/70 sm:text-xs">{modeLabel}模式</div>
+      </div>
+      <div className="bp-topology-meta mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-white sm:text-xs">
+        <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", natActive ? "bg-primary" : "bg-white/25")} />网关</span>
+        <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", tunActive ? "bg-primary" : "bg-white/25")} />TUN</span>
+        <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", singBoxActive ? "bg-primary" : "bg-white/25")} />代理服务</span>
+      </div>
+      <div className="bp-topology-graph">
+        <svg className="bp-graph-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <Path id="path-lan-gateway" d="M 8 50 C 14 50, 18 50, 22 50" active={natActive} />
+          <Path id="path-gateway-tun" d="M 27 50 C 33 50, 37 50, 42 50" active={singBoxActive && tunActive} />
+          <Path id="path-tun-direct" d="M 47 50 C 54 50, 56 29, 63 29" active={directPath} />
+          <Path id="path-tun-proxy" d="M 47 50 C 54 50, 56 71, 63 71" active={proxyPath} />
+          <Path id="path-direct-internet" d="M 68 29 C 77 29, 79 50, 88 50" active={directPath} />
+          <Path id="path-proxy-internet" d="M 68 71 C 77 71, 79 50, 88 50" active={proxyPath} />
+        </svg>
+        <Node icon={Wifi} label="设备" detail={`${activeDevices.length} 台活跃`} active={natActive} className="bp-graph-source" />
+        <Node icon={Network} label="网关" detail="旁路由" active={natActive} className="bp-graph-gateway" />
+        <Node icon={Shield} label="TUN" detail={tunActive ? "透明代理" : "已关闭"} active={singBoxActive && tunActive} className="bp-graph-tun" />
+        <Node icon={Route} label="直连" detail="国内流量" active={directPath} className="bp-graph-direct" />
+        <Node icon={Shield} label="代理" detail="海外流量" active={proxyPath} className="bp-graph-proxy" />
+        <Node icon={Globe2} label="外网" detail="目标服务" active={flowActive} className="bp-graph-internet" />
+      </div>
+      <div className="bp-active-devices mt-3 flex min-w-0 items-center gap-2 text-[10px] text-white/55 sm:text-xs">
+        <Wifi className="size-3.5 shrink-0 text-primary" />
+        <span className="shrink-0">活跃设备 {activeDevices.length}</span>
+        <div className="flex min-w-0 flex-wrap gap-1.5">
+          {activeDevices.slice(0, 5).map((address) => <span key={address} className="rounded-full bg-white/10 px-2 py-0.5 font-mono text-[10px] text-white/75">{address}</span>)}
+          {activeDevices.length > 5 ? <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/55">+{activeDevices.length - 5}</span> : null}
+          {!activeDevices.length ? <span className="text-white/35">暂无活跃连接</span> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type FunctionTileProps = Omit<React.ComponentPropsWithoutRef<typeof Button>, "children" | "title"> & {
   title: string;
   icon: LucideIcon;
@@ -451,7 +607,7 @@ const FunctionTile = React.forwardRef<HTMLButtonElement, FunctionTileProps>(({ t
     aria-label={title}
     {...props}
   >
-    <span className="grid size-14 place-items-center rounded-[18px] bg-[#073800] text-primary transition-colors group-hover:bg-[#0b5200] min-[430px]:size-16 min-[430px]:rounded-[22px] sm:size-[72px]">
+    <span className="grid size-14 place-items-center rounded-[18px] bg-[#323232] text-white transition-colors group-hover:bg-[#3a3a3a] min-[430px]:size-16 min-[430px]:rounded-[22px] sm:size-[72px]">
       <Icon data-icon="tile" />
     </span>
     <span className="max-w-full truncate text-sm font-normal text-white sm:text-base">{title}</span>
@@ -639,15 +795,24 @@ function ControlCenter({
     检查配置: "检查",
     "应用转发/NAT": "转发/NAT",
     一键修复: "修复",
+    "重启 sing-box": "重启代理",
+    暂停代理: "暂停代理",
+    恢复代理: "恢复代理",
     节点中心: "节点中心",
     自定义分流: "自定规则",
     备份同步: "备份",
   };
   return (
     <section className="grid gap-7">
-      <h2 className="text-xl font-medium sm:text-2xl">功能操作</h2>
       <div className="grid grid-cols-4 gap-x-3 gap-y-8 min-[430px]:grid-cols-5 sm:gap-x-6 sm:gap-y-10 lg:grid-cols-10">
         {visibleActions.map((action) => <FunctionTile key={action.title} title={compactLabels[action.title]} icon={action.icon} onClick={action.onClick} />)}
+        <SheetAction title="代理服务" items={[
+          { label: "重启代理", icon: Power, onSelect: () => openAction({ open: true, action: "restart-sing-box", title: "重启 sing-box", description: "重启代理服务", confirmText: "重启" }) },
+          { label: "暂停代理", icon: Power, destructive: true, onSelect: () => openAction({ open: true, action: "pause-proxy", title: "暂停代理", description: "停止 sing-box 代理服务", confirmText: "暂停代理", dangerous: true }) },
+          { label: "恢复代理", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "resume-proxy", title: "恢复代理", description: "启动代理并应用转发规则", confirmText: "恢复代理" }) },
+        ]}>
+          <FunctionTile title="代理服务" icon={Power} />
+        </SheetAction>
         <SheetAction title="更新" items={[
           { label: "更新程序", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "update-core", title: "更新 BypassProxy 脚本", description: "检查并更新项目脚本", confirmText: "更新脚本" }) },
           { label: "更新节点面板", icon: PanelTop, onSelect: () => openAction({ open: true, action: "update-webui", title: "更新节点面板", description: "检查并更新 MetaCubeXD 面板", confirmText: "更新" }) },
@@ -656,10 +821,10 @@ function ControlCenter({
           <FunctionTile title="更新" icon={RefreshCcw} />
         </SheetAction>
         <SheetAction title="设置" items={[
-          { label: "重启代理", icon: Power, onSelect: () => openAction({ open: true, action: "restart-sing-box", title: "重启 sing-box", description: "重启代理服务", confirmText: "重启" }) },
           { label: "检查配置", icon: CheckCircle2, onSelect: () => openAction({ open: true, action: "check-config", title: "检查配置", description: "检查当前 sing-box 配置", confirmText: "检查" }) },
-          { label: "暂停代理", icon: Power, destructive: true, onSelect: () => openAction({ open: true, action: "pause-proxy", title: "暂停代理", description: "停止 sing-box 代理服务", confirmText: "暂停代理", dangerous: true }) },
-          { label: "恢复代理", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "resume-proxy", title: "恢复代理", description: "启动代理并应用转发规则", confirmText: "恢复代理" }) },
+          { label: "TUN 开关", icon: Shield, onSelect: () => openAction(status?.tunEnabled === false
+            ? { open: true, action: "enable-tun", title: "开启 TUN", description: "开启 TUN 透明代理", confirmText: "开启 TUN" }
+            : { open: true, action: "disable-tun", title: "关闭 TUN", description: "关闭 TUN 透明代理", confirmText: "关闭 TUN", dangerous: true }) },
           { label: "基础设置", icon: Settings, onSelect: openBasicSettings },
           { label: "修改密钥", icon: KeyRound, onSelect: openPassword },
           { label: "最近结果", icon: Activity, onSelect: showRecent },
@@ -1686,6 +1851,14 @@ function SubscriptionCard({
     reload();
   }
 
+  function displayHost(url: string) {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return url.replace(/^[a-z]+:\/\//i, "").split(/[/?#]/)[0] || url;
+    }
+  }
+
   return (
     <section className="subscription-section grid gap-6">
       <div className="flex min-w-0 items-center justify-between gap-3">
@@ -1701,31 +1874,26 @@ function SubscriptionCard({
           </Button>
         </div>
       </div>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="subscription-scroll flex min-w-0 gap-4 overflow-x-auto pb-2 snap-x snap-mandatory">
         {items.map((item) => (
-          <Card className={cn("min-w-0 overflow-hidden rounded-[20px] bg-[#252525]", !item.enabled && "bg-[#171717] opacity-60")} key={item.id}>
-            <CardContent className="flex min-w-0 items-start gap-3 p-4 sm:p-5">
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="truncate text-base font-medium">{item.name}</span>
-                  <Badge variant="secondary" className="shrink-0 rounded-md px-2 font-mono font-normal">#{item.id}</Badge>
-                  <Badge variant={item.enabled ? "success" : "destructive"} className="shrink-0 rounded-md px-2 font-normal">{item.enabled ? "启动" : "停用"}</Badge>
+          <SheetAction key={item.id} title={item.name} items={[
+            { label: "编辑", icon: Pencil, onSelect: () => setEditingItem(item) },
+            { label: item.enabled ? "停用" : "启用", icon: Power, onSelect: () => toggle(item) },
+            { label: "删除", icon: Trash2, destructive: true, onSelect: () => remove(item) },
+          ]}>
+            <Card className={cn("subscription-tile w-[min(66vw,290px)] shrink-0 snap-start overflow-hidden rounded-[16px]", !item.enabled && "subscription-tile-disabled")}>
+              <CardContent className="flex min-w-0 items-start gap-3 p-0">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="truncate text-base font-medium">{item.name}</span>
+                    <span className="subscription-id shrink-0 font-mono text-lg">#{String(item.id).padStart(3, "0")}</span>
+                  </div>
+                  <div className="mt-3 block min-w-0 truncate font-mono text-xs" title={item.url}>{displayHost(item.url)}</div>
                 </div>
-                <div className="mt-3 block min-w-0 truncate font-mono text-xs text-[#999]" title={item.url}>{item.url}</div>
-              </div>
-              <SheetAction title={item.name} items={[
-                { label: "编辑", icon: Pencil, onSelect: () => setEditingItem(item) },
-                { label: item.enabled ? "停用" : "启用", icon: Power, onSelect: () => toggle(item) },
-                { label: "删除", icon: Trash2, destructive: true, onSelect: () => remove(item) },
-              ]}>
-                <Button size="icon" variant="ghost" className="shrink-0" aria-label={`${item.name} 更多操作`}>
-                  <MoreVertical data-icon="inline-start" />
-                </Button>
-              </SheetAction>
-            </CardContent>
-          </Card>
-        ))}
-        {items.length === 0 ? <Card className="lg:col-span-2"><CardContent className="p-8 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
+              </CardContent>
+            </Card>
+          </SheetAction>
+        ))}        {items.length === 0 ? <Card className="lg:col-span-2"><CardContent className="p-8 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
       </div>
       {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} /> : null}
     </section>
@@ -1841,15 +2009,13 @@ function App() {
   return (
     <main className="min-h-screen bg-background">
       <div className="mx-auto grid w-full max-w-[1120px] gap-12 px-4 pb-10 sm:gap-14 sm:px-6 sm:pb-14 lg:px-8">
-        <section className="-mx-4 flex min-h-[220px] flex-col overflow-hidden rounded-b-[20px] bg-[linear-gradient(145deg,#00B578_0%,#00E295_100%)] min-[430px]:min-h-[260px] sm:-mx-6 sm:min-h-[300px] lg:-mx-8">
+        <section className="-mx-4 flex min-h-0 flex-col overflow-hidden rounded-b-[20px] bg-[linear-gradient(180deg,#5f5f5f,#2d2d2d)] lg:-mx-8 sm:-mx-6">
           <HeaderPanel
             proxyMode={status?.proxyMode || "rule"}
             modeBusy={modeBusy}
             onModeChange={changeProxyMode}
           />
-          <div className="mt-auto pb-4 min-[430px]:pb-5 sm:pb-6">
-            <ServiceStatusV2 status={status} openAction={openAction} />
-          </div>
+          <LegacyNetworkOverviewV2 status={status} openAction={openAction} />
         </section>
 
         {error ? <Alert message={error} /> : null}
