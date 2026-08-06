@@ -117,7 +117,9 @@ stop_services() {
   systemctl disable --now bypassproxy-forward.timer 2>/dev/null || true
   systemctl disable --now bypassproxy-forward.service 2>/dev/null || true
   systemctl disable --now sing-box 2>/dev/null || true
+  systemctl disable --now mihomo 2>/dev/null || true
   pkill -f 'sing-box' 2>/dev/null || true
+  pkill -f '/usr/local/bin/mihomo' 2>/dev/null || true
 }
 
 remove_firewall_rules() {
@@ -144,11 +146,15 @@ remove_files() {
     /usr/local/sbin/bypassproxy-repair.sh \
     /usr/local/sbin/bypassproxy-diagnose-network.sh \
     /usr/local/sbin/bypassproxy-speed-test.sh \
-    /usr/local/bin/bp
+    /usr/local/bin/bp \
+    /usr/local/sbin/bypassproxy-kernel.sh \
+    /usr/local/bin/mihomo \
+    /etc/systemd/system/mihomo.service
 
   rm -rf \
     /etc/bypassproxy \
     /etc/sing-box \
+    /etc/mihomo \
     /opt/bypassproxy \
     /opt/bypassproxy-installer \
     /opt/bypassproxy-installer.bak.* \

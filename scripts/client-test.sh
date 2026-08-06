@@ -14,6 +14,7 @@ TUN_NAME="${TUN_NAME:-sbtun0}"
 TUN_DNS="${TUN_DNS:-28.0.0.2}"
 PANEL_PORT="${PANEL_PORT:-9091}"
 PANEL_SECRET="${PANEL_SECRET:-abc123}"
+KERNEL="${KERNEL:-sing-box}"
 NS="bp-client-test"
 HOST_IF="bpct-host"
 CLIENT_IF="bpct-client"
@@ -81,10 +82,12 @@ if [ "$FAIL" -gt 0 ]; then
   exit 1
 fi
 
-if systemctl is-active --quiet sing-box && ip link show "$TUN_NAME" >/dev/null 2>&1; then
-  ok "sing-box 和 TUN 正在运行"
+kernel_service="mihomo"
+[ "$KERNEL" = "mihomo" ] || kernel_service="sing-box"
+if systemctl is-active --quiet "$kernel_service" && ip link show "$TUN_NAME" >/dev/null 2>&1; then
+  ok "$kernel_service 和 TUN 正在运行"
 else
-  bad "sing-box 或 TUN 未运行"
+  bad "$kernel_service 或 TUN 未运行"
 fi
 
 if ip -4 addr show dev "$LAN_IF" 2>/dev/null | grep -Fq "$LAN_IP"; then
@@ -204,7 +207,8 @@ for item in items:
     if metadata.get("host") != "api.ipify.org":
         continue
     chains = [str(value) for value in item.get("chains") or []]
-    print(("VERIFIED|" if "proxy" in chains and "direct" not in chains else "BYPASS|") + " -> ".join(reversed(chains)))
+    lower_chains = {value.casefold() for value in chains}
+    print(("VERIFIED|" if "proxy" in lower_chains and "direct" not in lower_chains else "BYPASS|") + " -> ".join(reversed(chains)))
     break
 ' 2>/dev/null || true)"
     [ -n "$route_check" ] && break
@@ -225,7 +229,7 @@ case "$route_check" in
     bad "海外测试连接绕过代理：${route_check#BYPASS|}"
     ;;
   *)
-    bad "无法从 sing-box 连接表确认海外代理链路"
+    bad "无法从 $kernel_service 连接表确认海外代理链路"
     ;;
 esac
 

@@ -20,8 +20,10 @@ from urllib.request import Request, urlopen
 CONF = Path(os.environ.get("ROUTER_CONF", "/etc/bypassproxy/router.conf"))
 APP_DIR = Path(os.environ.get("APP_DIR", "/opt/bypassproxy"))
 SUBSCRIPTION_DIR = Path(os.environ.get("SUBSCRIPTION_DIR", "/etc/bypassproxy/subscriptions.d"))
+SUBSCRIPTION_INFO = Path(os.environ.get("SUBSCRIPTION_INFO", "/etc/bypassproxy/subscription-cache.d/subscription-info.json"))
 OUTBOUNDS_JSON = Path(os.environ.get("OUTBOUNDS_JSON", "/etc/bypassproxy/outbounds.json"))
 SING_BOX_CONFIG = Path(os.environ.get("SING_BOX_CONFIG", "/etc/sing-box/config.json"))
+MIHOMO_CONFIG = Path(os.environ.get("MIHOMO_CONFIG", "/etc/mihomo/config.yaml"))
 CUSTOM_RULES_JSON = Path(os.environ.get("CUSTOM_RULES_JSON", "/etc/bypassproxy/custom-rules.json"))
 STATIC_DIR = Path(os.environ.get("ADMIN_UI_DIR", "/usr/local/share/bypassproxy-admin"))
 
@@ -54,6 +56,24 @@ def read_conf() -> dict[str, str]:
     }
     defaults.update(values)
     return defaults
+
+
+def current_kernel() -> str:
+    return "mihomo" if read_conf().get("KERNEL", "sing-box").strip().lower() == "mihomo" else "sing-box"
+
+
+def kernel_service() -> str:
+    return "mihomo" if current_kernel() == "mihomo" else "sing-box"
+
+
+def kernel_config_command() -> list[str]:
+    return ["mihomo", "-t", "-f", str(MIHOMO_CONFIG)] if current_kernel() == "mihomo" else ["sing-box", "check", "-C", "/etc/sing-box"]
+
+
+def kernel_render_command() -> tuple[list[str], dict[str, str]]:
+    if current_kernel() == "mihomo":
+        return (["/usr/local/sbin/bypassproxy-kernel.sh", "render"], {"ROUTER_CONF": str(CONF), "APP_DIR": str(APP_DIR), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON)})
+    return (["python3", str(APP_DIR / "scripts/render-config.py")], {"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG), "CUSTOM_RULES_JSON": str(custom_rules_path())})
 
 
 def quote_value(value: str) -> str:
@@ -279,7 +299,7 @@ def run_command(args: list[str], timeout: int = 120, env: dict[str, str] | None 
 
 def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dict[str, str] | None]]:
     router_env = {"ROUTER_CONF": str(CONF)}
-    render_env = {"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG), "CUSTOM_RULES_JSON": str(custom_rules_path())}
+    render_cmd, render_env = kernel_render_command()
     def sync_env_from_data() -> dict[str, str]:
         env = dict(router_env)
         mapping = {
@@ -306,36 +326,42 @@ def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dic
             sub_env["BYPASSPROXY_DIRECT_DOWNLOAD"] = "1"
         return [
             ("更新订阅", ["/usr/local/sbin/bypassproxy-update-subscription.sh"], 240, sub_env),
-            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, render_env),
-            ("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None),
-            ("重启 sing-box", ["systemctl", "restart", "sing-box"], 40, None),
+            ("生成配置", render_cmd, 60, render_env),
+            ("检查配置", kernel_config_command(), 60, None),
+            ("重启 sing-box", ["systemctl", "restart", kernel_service()], 40, None),
         ]
     if action == "apply-config":
         return [
-            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, render_env),
-            ("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None),
-            ("重启 sing-box", ["systemctl", "restart", "sing-box"], 40, None),
+            ("生成配置", render_cmd, 60, render_env),
+            ("检查配置", kernel_config_command(), 60, None),
+            ("重启 sing-box", ["systemctl", "restart", kernel_service()], 40, None),
         ]
     if action == "check-config":
-        return [("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None)]
+        return [("检查配置", kernel_config_command(), 60, None)]
+    if action == "check-mihomo":
+        return [("check mihomo", ["/usr/local/sbin/bypassproxy-kernel.sh", "check"], 120, {"ROUTER_CONF": str(CONF), "APP_DIR": str(APP_DIR), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON)})]
+    if action == "switch-kernel-sing-box":
+        return [("switch to sing-box", ["/usr/local/sbin/bypassproxy-kernel.sh", "switch", "sing-box"], 180, {"ROUTER_CONF": str(CONF), "APP_DIR": str(APP_DIR), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON)})]
+    if action == "switch-kernel-mihomo":
+        return [("switch to mihomo", ["/usr/local/sbin/bypassproxy-kernel.sh", "switch", "mihomo"], 300, {"ROUTER_CONF": str(CONF), "APP_DIR": str(APP_DIR), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON)})]
     if action == "restart-sing-box":
-        return [("重启 sing-box", ["systemctl", "restart", "sing-box"], 40, None)]
+        return [("重启 sing-box", ["systemctl", "restart", kernel_service()], 40, None)]
     if action == "pause-proxy":
-        return [("暂停代理服务", ["systemctl", "disable", "--now", "sing-box"], 40, None)]
+        return [("暂停代理服务", ["systemctl", "disable", "--now", kernel_service()], 40, None)]
     if action == "resume-proxy":
         return [
-            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, render_env),
-            ("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None),
-            ("恢复代理服务", ["systemctl", "enable", "--now", "sing-box"], 40, None),
+            ("生成配置", render_cmd, 60, render_env),
+            ("检查配置", kernel_config_command(), 60, None),
+            ("恢复代理服务", ["systemctl", "enable", "--now", kernel_service()], 40, None),
             ("应用转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env),
         ]
     if action in {"enable-tun", "disable-tun"}:
         enabled = action == "enable-tun"
         save_conf_key("TUN_ENABLE", "1" if enabled else "0")
         return [
-            ("生成配置", ["python3", str(APP_DIR / "scripts/render-config.py")], 60, render_env),
-            ("检查配置", ["sing-box", "check", "-C", "/etc/sing-box"], 60, None),
-            ("重启 sing-box", ["systemctl", "restart", "sing-box"], 40, None),
+            ("生成配置", render_cmd, 60, render_env),
+            ("检查配置", kernel_config_command(), 60, None),
+            ("重启 sing-box", ["systemctl", "restart", kernel_service()], 40, None),
             ("更新转发/NAT", ["/usr/local/sbin/bypassproxy-forward.sh"], 60, router_env),
         ]
     if action == "update-rulesets":
@@ -431,7 +457,20 @@ def load_subscription(path: Path) -> dict[str, str]:
 
 def list_subscriptions() -> list[dict]:
     SUBSCRIPTION_DIR.mkdir(parents=True, exist_ok=True)
-    return [load_subscription(path) for path in sorted(SUBSCRIPTION_DIR.glob("*.conf"))]
+    try:
+        info = json.loads(SUBSCRIPTION_INFO.read_text(encoding="utf-8-sig"))
+    except Exception:
+        info = {}
+    if not isinstance(info, dict):
+        info = {}
+    items = []
+    for path in sorted(SUBSCRIPTION_DIR.glob("*.conf")):
+        item = load_subscription(path)
+        userinfo = info.get(item["id"])
+        if isinstance(userinfo, dict):
+            item["userinfo"] = userinfo
+        items.append(item)
+    return items
 
 
 def next_subscription_id() -> str:
@@ -556,7 +595,10 @@ def public_status() -> dict:
     admin_active = systemctl_is_active("bypassproxy-admin")
     return {
         "services": {
-            "singBox": systemctl_is_active("sing-box"),
+            # Keep singBox for older clients, but expose the active core explicitly.
+            "singBox": systemctl_is_active(kernel_service()),
+            "kernel": current_kernel(),
+            "kernelStatus": systemctl_is_active(kernel_service()),
             "forwardTimer": systemctl_is_active("bypassproxy-forward.timer"),
             "admin": admin_active,
         },
@@ -588,6 +630,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         return
+
+    def end_headers(self):
+        # The admin UI is updated in place; clients must not retain stale bundles.
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        super().end_headers()
 
     def send_json(self, data, status=HTTPStatus.OK):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
@@ -905,13 +952,99 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("端口无效")
             save_conf_key("ADMIN_PORT", port)
             return {"ok": True, "message": "端口已保存，重启 Web 管理页后生效"}
+        if path == "/api/proxies/apply-group":
+            group = str(data.get("group") or "").strip()
+            if not group:
+                raise ValueError("请选择要应用的订阅组")
+            if current_kernel() != "mihomo":
+                raise RuntimeError("当前内核不支持按订阅组应用")
+
+            all_proxies = clash_api_request("GET", "/proxies").get("proxies", {})
+            candidate_name = next(
+                (name for name in all_proxies if str(name).strip().casefold() == group.casefold()),
+                None,
+            )
+            candidate = all_proxies.get(candidate_name, {}) if candidate_name else {}
+            members = candidate.get("all") if isinstance(candidate, dict) else None
+            if not isinstance(members, list) or not members:
+                raise ValueError("所选分组不存在或没有可用节点")
+
+            selected_node = str(candidate.get("now") or members[0]).strip()
+            proxy_group_name = next(
+                (name for name in all_proxies if str(name).strip().casefold() == "proxy"),
+                "PROXY",
+            )
+            global_group_name = next(
+                (name for name in all_proxies if str(name).strip().casefold() == "global"),
+                "GLOBAL",
+            )
+            proxy_members = all_proxies.get(proxy_group_name, {}).get("all", [])
+            if selected_node not in proxy_members:
+                raise ValueError("所选分组的当前节点不在主代理组中，请先刷新订阅并应用")
+
+            # Selector groups keep their own selection. URLTest groups choose
+            # automatically and cannot be changed through the selector PUT.
+            candidate_type = str(candidate.get("type") or "").strip().casefold()
+            if candidate_type not in {"urltest", "fallback", "loadbalance"}:
+                clash_api_request("PUT", f"/proxies/{quote(candidate_name, safe='')}", {"name": selected_node})
+            # PROXY is the concrete group exposed to MetaCubeXD through GLOBAL.
+            clash_api_request("PUT", f"/proxies/{quote(proxy_group_name, safe='')}", {"name": selected_node})
+            clash_api_request("PUT", f"/proxies/{quote(global_group_name, safe='')}", {"name": proxy_group_name})
+
+            refreshed = clash_api_request("GET", "/proxies").get("proxies", {})
+            proxy_now = refreshed.get(proxy_group_name, {}).get("now", "")
+            global_now = refreshed.get(global_group_name, {}).get("now", "")
+            group_now = refreshed.get(candidate_name, {}).get("now", "")
+            if proxy_now != selected_node or global_now != proxy_group_name:
+                raise RuntimeError("mihomo 未确认主代理组同步，请重试")
+            return {
+                "ok": True,
+                "selectedGroup": candidate_name,
+                "selectedNode": selected_node,
+                "groupNow": group_now,
+                "proxyNow": proxy_now,
+                "globalNow": global_now,
+            }
         if path == "/api/proxies/select":
             group = str(data.get("group") or "").strip()
             name = str(data.get("name") or "").strip()
             if not group or not name:
                 raise ValueError("节点组和节点名称不能为空")
-            clash_api_request("PUT", f"/proxies/{quote(group, safe='')}", {"name": name})
-            return {"ok": True, "group": group, "name": name}
+            selected_name = name
+            selected_group = ""
+            if current_kernel() == "mihomo" and group.lower() == "proxy":
+                # mihomo's REST API accepts a real proxy name for PROXY, not a
+                # nested proxy-group name. Resolve a requested subscription group
+                # to its current/first node before applying it.
+                try:
+                    all_proxies = clash_api_request("GET", "/proxies").get("proxies", {})
+                    candidate = all_proxies.get(name, {}) if isinstance(all_proxies, dict) else {}
+                    if not candidate and isinstance(all_proxies, dict):
+                        wanted = name.strip().casefold()
+                        for candidate_name, candidate_value in all_proxies.items():
+                            if str(candidate_name).strip().casefold() == wanted:
+                                candidate = candidate_value
+                                break
+                except Exception:
+                    candidate = {}
+                members = candidate.get("all") if isinstance(candidate, dict) else None
+                if isinstance(members, list) and members:
+                    selected_group = name
+                    selected_name = str(candidate.get("now") or members[0])
+                elif isinstance(all_proxies, dict) and name not in (all_proxies.get("PROXY", {}).get("all") or []):
+                    raise ValueError("mihomo 无法解析所选订阅组，请刷新节点列表后重试")
+            clash_api_request("PUT", f"/proxies/{quote(group, safe='')}", {"name": selected_name})
+            # MetaCubeXD usually opens mihomo's GLOBAL selector. GLOBAL cannot
+            # select a proxy-group directly, so point it at the main PROXY group;
+            # PROXY then carries the selected subscription group or node.
+            if current_kernel() == "mihomo":
+                if group.lower() != "proxy" and selected_name:
+                    clash_api_request("PUT", "/proxies/PROXY", {"name": selected_name})
+                clash_api_request("PUT", "/proxies/GLOBAL", {"name": "PROXY"})
+                refreshed = clash_api_request("GET", "/proxies").get("proxies", {})
+                if refreshed.get("PROXY", {}).get("now") != selected_name or refreshed.get("GLOBAL", {}).get("now") != "PROXY":
+                    raise RuntimeError("mihomo 未确认节点同步，请重试")
+            return {"ok": True, "group": group, "name": selected_name, "selectedGroup": selected_group or None}
         if path == "/api/proxies/delay":
             names = data.get("names")
             if not isinstance(names, list):
@@ -954,6 +1087,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "PANEL_PORT": r"^\d{2,5}$",
                 "ADMIN_PORT": r"^\d{2,5}$",
                 "TUN_ENABLE": r"^(0|1|true|false|on|off|yes|no|enable|disable|enabled|disabled)$",
+                "KERNEL": r"^(sing-box|mihomo)$",
                 "DNS1": r"^[0-9A-Fa-f:.]{3,64}$",
                 "DNS2": r"^[0-9A-Fa-f:.]{0,64}$",
                 "SUBSCRIBE_USER_AGENT": r"^.{0,120}$",
@@ -983,7 +1117,7 @@ class Handler(SimpleHTTPRequestHandler):
             save_conf_key("PANEL_SECRET", new_secret)
             render = self.handle_post("/api/actions/render-config", {})
             if render.get("ok"):
-                restart = run_command(["systemctl", "restart", "sing-box"], timeout=40)
+                restart = run_command(["systemctl", "restart", kernel_service()], timeout=40)
                 render["restart"] = restart
                 render["ok"] = restart["ok"]
                 render["output"] = (render.get("output", "") + "\n" + restart.get("output", "")).strip()
@@ -999,16 +1133,14 @@ class Handler(SimpleHTTPRequestHandler):
                 result["ok"] = apply.get("ok", False)
             return result
         if path == "/api/actions/render-config":
+            render_cmd, render_env = kernel_render_command()
             result = run_command(
-                [
-                    "python3",
-                    str(APP_DIR / "scripts/render-config.py"),
-                ],
+                render_cmd,
                 timeout=60,
-                env={"ROUTER_CONF": str(CONF), "OUTBOUNDS_JSON": str(OUTBOUNDS_JSON), "OUTPUT": str(SING_BOX_CONFIG), "CUSTOM_RULES_JSON": str(custom_rules_path())},
+                env=render_env,
             )
             if result["ok"]:
-                check = run_command(["sing-box", "check", "-C", "/etc/sing-box"], timeout=60)
+                check = run_command(kernel_config_command(), timeout=60)
                 result["check"] = check
                 result["ok"] = check["ok"]
                 result["output"] = (result["output"] + "\n" + check["output"]).strip()
@@ -1016,19 +1148,19 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/actions/apply-config":
             result = self.handle_post("/api/actions/render-config", {})
             if result["ok"]:
-                restart = run_command(["systemctl", "restart", "sing-box"], timeout=40)
+                restart = run_command(["systemctl", "restart", kernel_service()], timeout=40)
                 result["restart"] = restart
                 result["ok"] = restart["ok"]
                 result["output"] = (result["output"] + "\n" + restart["output"]).strip()
             return result
         if path == "/api/actions/restart-sing-box":
-            return run_command(["systemctl", "restart", "sing-box"], timeout=40)
+            return run_command(["systemctl", "restart", kernel_service()], timeout=40)
         if path == "/api/actions/pause-proxy":
-            return run_command(["systemctl", "disable", "--now", "sing-box"], timeout=40)
+            return run_command(["systemctl", "disable", "--now", kernel_service()], timeout=40)
         if path == "/api/actions/resume-proxy":
             result = self.handle_post("/api/actions/apply-config", {})
             if result["ok"]:
-                enable = run_command(["systemctl", "enable", "--now", "sing-box"], timeout=40)
+                enable = run_command(["systemctl", "enable", "--now", kernel_service()], timeout=40)
                 forward = run_command(["/usr/local/sbin/bypassproxy-forward.sh"], timeout=60, env={"ROUTER_CONF": str(CONF)})
                 result["enable"] = enable
                 result["forward"] = forward
@@ -1036,7 +1168,7 @@ class Handler(SimpleHTTPRequestHandler):
                 result["output"] = (result["output"] + "\n" + enable["output"] + "\n" + forward["output"]).strip()
             return result
         if path == "/api/actions/check-config":
-            return run_command(["sing-box", "check", "-C", "/etc/sing-box"], timeout=60)
+            return run_command(kernel_config_command(), timeout=60)
         if path == "/api/actions/update-rulesets":
             return run_command(["/usr/local/sbin/bypassproxy-update-rulesets.sh"], timeout=180, env={"ROUTER_CONF": str(CONF)})
         if path == "/api/actions/update-webui":

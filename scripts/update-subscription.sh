@@ -9,6 +9,7 @@ SUBSCRIPTION_DIR="${SUBSCRIPTION_DIR:-/etc/bypassproxy/subscriptions.d}"
 SUBSCRIPTION_CACHE_DIR="${SUBSCRIPTION_CACHE_DIR:-/etc/bypassproxy/subscription-cache.d}"
 SUBSCRIPTION_LAST_DIR="${SUBSCRIPTION_LAST_DIR:-$SUBSCRIPTION_CACHE_DIR/last}"
 SUBSCRIPTION_MANIFEST="${SUBSCRIPTION_MANIFEST:-$SUBSCRIPTION_CACHE_DIR/manifest.json}"
+SUBSCRIPTION_INFO="${SUBSCRIPTION_INFO:-$SUBSCRIPTION_CACHE_DIR/subscription-info.json}"
 
 if [ ! -f "$CONF" ]; then
   echo "缺少配置文件：$CONF" >&2
@@ -43,11 +44,12 @@ printf "[]" > "$SUBSCRIPTION_MANIFEST"
 download() {
   url="$1"
   out="$2"
+  headers="$3"
   if command -v curl >/dev/null 2>&1; then
     if [ -n "$DOWNLOAD_PROXY" ]; then
-      curl -fsSL --retry 2 --retry-all-errors --retry-delay 2 --connect-timeout 15 -A "$SUBSCRIBE_USER_AGENT" -x "$DOWNLOAD_PROXY" -o "$out" "$url"
+      curl -fsSL --retry 2 --retry-all-errors --retry-delay 2 --connect-timeout 15 -A "$SUBSCRIBE_USER_AGENT" -x "$DOWNLOAD_PROXY" -D "$headers" -o "$out" "$url"
     else
-      curl -fsSL --retry 2 --retry-all-errors --retry-delay 2 --connect-timeout 15 -A "$SUBSCRIBE_USER_AGENT" -o "$out" "$url"
+      curl -fsSL --retry 2 --retry-all-errors --retry-delay 2 --connect-timeout 15 -A "$SUBSCRIBE_USER_AGENT" -D "$headers" -o "$out" "$url"
     fi
   else
     wget -q -t 3 -T 15 -U "$SUBSCRIBE_USER_AGENT" -O "$out" "$url"
@@ -58,15 +60,37 @@ append_manifest() {
   cache="$1"
   key="$2"
   label="$3"
-  python3 - "$SUBSCRIPTION_MANIFEST" "$cache" "$key" "$label" <<'PY'
+  headers="${4:-}"
+  python3 - "$SUBSCRIPTION_MANIFEST" "$SUBSCRIPTION_INFO" "$cache" "$key" "$label" "$headers" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 manifest = Path(sys.argv[1])
-cache = Path(sys.argv[2])
-key = sys.argv[3]
-label = sys.argv[4]
+info_path = Path(sys.argv[2])
+cache = Path(sys.argv[3])
+key = sys.argv[4]
+label = sys.argv[5]
+headers = Path(sys.argv[6]) if sys.argv[6] else None
+
+def read_userinfo(path):
+    result = {}
+    if not path or not path.exists():
+        return result
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not raw.lower().startswith("subscription-userinfo:"):
+            continue
+        for part in raw.split(":", 1)[1].split(";"):
+            if "=" not in part:
+                continue
+            name, number = part.strip().split("=", 1)
+            name = name.strip()
+            if name in {"upload", "download", "total", "expire"}:
+                try:
+                    result[name] = int(number.strip())
+                except ValueError:
+                    pass
+    return result
 
 try:
     data = json.loads(manifest.read_text(encoding="utf-8-sig"))
@@ -74,12 +98,27 @@ except Exception:
     data = []
 if not isinstance(data, list):
     data = []
-data.append({
+try:
+    info = json.loads(info_path.read_text(encoding="utf-8-sig"))
+except Exception:
+    info = {}
+if not isinstance(info, dict):
+    info = {}
+userinfo = read_userinfo(headers)
+if userinfo:
+    info[key] = userinfo
+entry = {
     "file": cache.name,
     "id": key,
     "name": label or key,
+}
+if info.get(key):
+    entry["userinfo"] = info[key]
+data.append({
+    **entry,
 })
 manifest.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+info_path.write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
 PY
 }
 
@@ -89,6 +128,7 @@ save_source() {
   key="${3:-}"
   attempts=$((attempts + 1))
   cache="$SUBSCRIPTION_CACHE_DIR/source-$(printf "%03d" "$attempts").txt"
+  headers="$SUBSCRIPTION_CACHE_DIR/headers-$(printf "%03d" "$attempts").txt"
   if [ -z "$key" ]; then
     key="$(printf "%03d" "$attempts")"
   fi
@@ -96,20 +136,21 @@ save_source() {
   case "$source" in
     vmess://*|vless://*|trojan://*|ss://*|hysteria2://*|hy2://*)
       printf "%s\n" "$source" > "$cache"
+      : > "$headers"
       cp "$cache" "$last_cache"
-      append_manifest "$cache" "$key" "$label"
+      append_manifest "$cache" "$key" "$label" "$headers"
       count=$((count + 1))
       ;;
     *)
       echo "正在更新：$label" >&2
-      if download "$source" "$cache"; then
+      if download "$source" "$cache" "$headers"; then
         cp "$cache" "$last_cache"
-        append_manifest "$cache" "$key" "$label"
+        append_manifest "$cache" "$key" "$label" "$headers"
         count=$((count + 1))
       elif [ -s "$last_cache" ]; then
         failed=$((failed + 1))
         cp "$last_cache" "$cache"
-        append_manifest "$cache" "$key" "$label"
+        append_manifest "$cache" "$key" "$label" ""
         count=$((count + 1))
         echo "WARN 订阅更新失败，已使用上次成功缓存：$label" >&2
       else

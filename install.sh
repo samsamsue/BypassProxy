@@ -234,6 +234,8 @@ SUBSCRIBE_URL="${SUBSCRIBE_URL:-}"
 SUBSCRIBE_URLS="${SUBSCRIBE_URLS:-}"
 SUBSCRIBE_USER_AGENT="${SUBSCRIBE_USER_AGENT:-clash.meta}"
 SINGBOX_DEB_URL="${SINGBOX_DEB_URL:-https://github.com/SagerNet/sing-box/releases/download/v1.13.14/sing-box_1.13.14_linux_amd64.deb}"
+KERNEL="${KERNEL:-sing-box}"
+MIHOMO_VERSION="${MIHOMO_VERSION:-1.19.20}"
 DOWNLOAD_PROXY="${DOWNLOAD_PROXY:-}"
 GITHUB_DOWNLOAD_PREFIX="${GITHUB_DOWNLOAD_PREFIX:-}"
 GITHUB_DOWNLOAD_PREFIXES="${GITHUB_DOWNLOAD_PREFIXES:-https://gh-proxy.com/ https://ghproxy.net/ https://gh.llkk.cc/}"
@@ -350,6 +352,7 @@ cleanup_legacy_names() {
 install_singbox
 cleanup_legacy_names
 mkdir -p "$BUILD" /etc/bypassproxy /etc/bypassproxy/rules /etc/bypassproxy/subscriptions.d /etc/bypassproxy/subscription-cache.d /etc/sing-box /usr/local/sbin /usr/local/bin /usr/local/share "$APP_DIR"
+mkdir -p /etc/mihomo
 
 src_conf="$(readlink -f "$CONF" 2>/dev/null || printf "%s" "$CONF")"
 dst_conf="$(readlink -f /etc/bypassproxy/router.conf 2>/dev/null || printf "%s" /etc/bypassproxy/router.conf)"
@@ -410,6 +413,7 @@ install_link() {
 }
 
 install_link "$APP_DIR/scripts/bypassproxy-forward.sh" /usr/local/sbin/bypassproxy-forward.sh
+install_link "$APP_DIR/scripts/bypassproxy-kernel.sh" /usr/local/sbin/bypassproxy-kernel.sh
 install_link "$APP_DIR/scripts/update-subscription.sh" /usr/local/sbin/bypassproxy-update-subscription.sh
 install_link "$APP_DIR/scripts/update-webui.sh" /usr/local/sbin/bypassproxy-update-webui.sh
 install_link "$APP_DIR/scripts/update-rulesets.sh" /usr/local/sbin/bypassproxy-update-rulesets.sh
@@ -441,7 +445,7 @@ SYSCTL
 cat > /etc/systemd/system/bypassproxy-forward.service <<SERVICE
 [Unit]
 Description=BypassProxy 旁路由同网卡转发
-After=network-online.target sing-box.service
+After=network-online.target sing-box.service mihomo.service
 Wants=network-online.target
 
 [Service]
@@ -479,6 +483,22 @@ Environment=ROUTER_CONF=/etc/bypassproxy/router.conf
 Environment=APP_DIR=/opt/bypassproxy
 Environment=ADMIN_UI_DIR=/usr/local/share/bypassproxy-admin
 ExecStart=/usr/bin/env python3 /opt/bypassproxy/scripts/admin-server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+cat > /etc/systemd/system/mihomo.service <<SERVICE
+[Unit]
+Description=BypassProxy mihomo core
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mihomo -d /etc/mihomo -f /etc/mihomo/config.yaml
 Restart=on-failure
 RestartSec=3
 

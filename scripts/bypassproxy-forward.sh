@@ -13,6 +13,11 @@ LAN_IP="${LAN_IP:-192.168.3.88}"
 TUN_ENABLE="${TUN_ENABLE:-1}"
 TUN_NAME="${TUN_NAME:-sbtun0}"
 TUN_DNS="${TUN_DNS:-28.0.0.2}"
+KERNEL="${KERNEL:-sing-box}"
+
+kernel_service() {
+  [ "$KERNEL" = "mihomo" ] && printf '%s\n' mihomo || printf '%s\n' sing-box
+}
 
 is_enabled() {
   case "$(printf "%s" "$1" | tr 'A-Z' 'a-z')" in
@@ -75,17 +80,14 @@ wait_for_tun() {
 ensure_tun_ready() {
   needs_restart=0
 
-  systemctl is-active --quiet sing-box || needs_restart=1
+  systemctl is-active --quiet "$(kernel_service)" || needs_restart=1
   ip link show "$TUN_NAME" >/dev/null 2>&1 || needs_restart=1
-  if command -v nft >/dev/null 2>&1; then
-    nft list table inet sing-box >/dev/null 2>&1 || needs_restart=1
-  fi
 
   if [ "$needs_restart" -eq 1 ]; then
-    echo "TUN 路由不完整，正在重启 sing-box 恢复。"
-    systemctl restart sing-box
+    echo "TUN 路由不完整，正在重启 $(kernel_service) 恢复。"
+    systemctl restart "$(kernel_service)"
     wait_for_tun || {
-      echo "ERROR sing-box 重启后仍未创建 TUN 网卡：$TUN_NAME" >&2
+      echo "ERROR $(kernel_service) 重启后仍未创建 TUN 网卡：$TUN_NAME" >&2
       return 1
     }
   fi

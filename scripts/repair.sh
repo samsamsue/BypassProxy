@@ -5,6 +5,7 @@ APP_DIR="${APP_DIR:-/opt/bypassproxy}"
 CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
 OUTBOUNDS_JSON="${OUTBOUNDS_JSON:-/etc/bypassproxy/outbounds.json}"
 SING_BOX_CONFIG="${SING_BOX_CONFIG:-/etc/sing-box/config.json}"
+MIHOMO_CONFIG="${MIHOMO_CONFIG:-/etc/mihomo/config.yaml}"
 BUILD_DIR="${BUILD_DIR:-/tmp/bypassproxy-repair}"
 
 if [ "$(id -u)" != "0" ]; then
@@ -18,7 +19,7 @@ if [ ! -f "$CONF" ]; then
 fi
 
 echo "== 准备目录和权限 =="
-mkdir -p /etc/bypassproxy/rules /etc/bypassproxy/subscriptions.d /etc/bypassproxy/subscription-cache.d /etc/sing-box "$BUILD_DIR" /usr/local/sbin /usr/local/bin /usr/local/share "$APP_DIR/scripts"
+mkdir -p /etc/bypassproxy/rules /etc/bypassproxy/subscriptions.d /etc/bypassproxy/subscription-cache.d /etc/sing-box /etc/mihomo "$BUILD_DIR" /usr/local/sbin /usr/local/bin /usr/local/share "$APP_DIR/scripts"
 chmod 700 /etc/bypassproxy 2>/dev/null || true
 
 link_entry() {
@@ -50,6 +51,7 @@ link_entry speed-test.sh bypassproxy-speed-test.sh
 link_entry client-test.sh bypassproxy-client-test.sh
 link_entry uninstall.sh bypassproxy-uninstall.sh
 link_entry repair.sh bypassproxy-repair.sh
+link_entry bypassproxy-kernel.sh bypassproxy-kernel.sh
 
 if [ -d "$APP_DIR/webui" ]; then
   rm -rf /usr/local/share/metacubexd
@@ -83,14 +85,22 @@ else
 fi
 
 echo "== 重新生成 sing-box 配置 =="
-ROUTER_CONF="$CONF" OUTBOUNDS_JSON="$OUTBOUNDS_JSON" OUTPUT="$SING_BOX_CONFIG" python3 "$APP_DIR/scripts/render-config.py"
+if [ "${KERNEL:-sing-box}" = "mihomo" ]; then
+  ROUTER_CONF="$CONF" APP_DIR="$APP_DIR" OUTBOUNDS_JSON="$OUTBOUNDS_JSON" /usr/local/sbin/bypassproxy-kernel.sh render
+else
+  ROUTER_CONF="$CONF" OUTBOUNDS_JSON="$OUTBOUNDS_JSON" OUTPUT="$SING_BOX_CONFIG" python3 "$APP_DIR/scripts/render-config.py"
+fi
 
 echo "== 检查配置 =="
-sing-box check -C /etc/sing-box
+if [ "${KERNEL:-sing-box}" = "mihomo" ]; then
+  /usr/local/sbin/bypassproxy-kernel.sh check
+else
+  sing-box check -C /etc/sing-box
+fi
 
 echo "== 重载服务 =="
 systemctl daemon-reload
-systemctl restart sing-box
+systemctl restart "${KERNEL:-sing-box}"
 systemctl enable --now bypassproxy-forward.timer 2>/dev/null || true
 
 echo "== 重新应用转发/NAT =="
@@ -106,6 +116,6 @@ if systemctl is-enabled bypassproxy-admin >/dev/null 2>&1 || systemctl is-active
 fi
 
 echo "== 修复完成 =="
-systemctl is-active sing-box || true
+systemctl is-active "${KERNEL:-sing-box}" || true
 systemctl is-active bypassproxy-forward.timer || true
 systemctl is-active bypassproxy-admin 2>/dev/null || true

@@ -55,12 +55,25 @@ def is_information_outbound(raw: dict) -> bool:
     return bool(tag and any(re.search(pattern, tag, re.IGNORECASE) for pattern in INFORMATION_TAG_PATTERNS))
 
 
+def is_valid_sing_box_outbound(raw: dict) -> bool:
+    tls = raw.get("tls")
+    if not isinstance(tls, dict):
+        return True
+    reality = tls.get("reality")
+    if not isinstance(reality, dict) or not reality.get("enabled"):
+        return True
+    public_key = str(reality.get("public_key") or "").strip()
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]{43}", public_key))
+
+
 def prepare_proxy_outbounds(data: list[dict]) -> list[tuple[dict, dict]]:
     reserved = {"auto", "proxy", "direct", "block"}
     used = set(reserved)
     prepared = []
     for raw in data:
         if raw.get("type") in {"direct", "block"} or is_information_outbound(raw):
+            continue
+        if not is_valid_sing_box_outbound(raw):
             continue
         item = {key: value for key, value in raw.items() if key not in INTERNAL_OUTBOUND_KEYS}
         tag = str(item.get("tag") or item.get("server") or item.get("type") or "proxy").strip()

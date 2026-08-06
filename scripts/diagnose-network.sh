@@ -2,7 +2,7 @@
 set -u
 
 CONF="${ROUTER_CONF:-/etc/bypassproxy/router.conf}"
-CONFIG_JSON="${CONFIG_JSON:-/etc/sing-box/config.json}"
+CONFIG_JSON="${CONFIG_JSON:-}"
 RULE_DIR="${RULE_DIR:-/etc/bypassproxy/rules}"
 
 if [ -f "$CONF" ]; then
@@ -20,6 +20,16 @@ PROXY_PORT="${PROXY_PORT:-7890}"
 PANEL_PORT="${PANEL_PORT:-9091}"
 DNS1="${DNS1:-223.5.5.5}"
 DNS2="${DNS2:-119.29.29.29}"
+KERNEL="${KERNEL:-sing-box}"
+KERNEL_SERVICE="mihomo"
+[ "$KERNEL" = "mihomo" ] || KERNEL_SERVICE="sing-box"
+if [ -z "$CONFIG_JSON" ]; then
+  if [ "$KERNEL_SERVICE" = "mihomo" ]; then
+    CONFIG_JSON="/etc/mihomo/config.yaml"
+  else
+    CONFIG_JSON="/etc/sing-box/config.json"
+  fi
+fi
 
 PASS=0
 WARN=0
@@ -73,7 +83,7 @@ show_title() {
 
 show_title "基础信息"
 echo "配置文件：$CONF"
-echo "sing-box 配置：$CONFIG_JSON"
+echo "$KERNEL_SERVICE 配置：$CONFIG_JSON"
 echo "LAN 网卡：$LAN_IF"
 echo "LAN IP：$LAN_IP"
 echo "LAN 网段：$LAN_NET"
@@ -84,7 +94,7 @@ echo "面板端口：$PANEL_PORT"
 echo "DNS：$DNS1 / $DNS2"
 
 show_title "必要命令"
-for cmd in ip iptables sysctl ss sing-box; do
+for cmd in ip iptables sysctl ss "$KERNEL_SERVICE"; do
   check_cmd "$cmd"
 done
 
@@ -106,7 +116,7 @@ if ! is_enabled "$TUN_ENABLE"; then
 elif ip link show "$TUN_NAME" >/dev/null 2>&1; then
   ok "TUN 网卡存在：$TUN_NAME"
 else
-  bad "TUN 网卡不存在：$TUN_NAME；sing-box TUN 可能没起来"
+  bad "TUN 网卡不存在：$TUN_NAME；$KERNEL_SERVICE TUN 可能没起来"
 fi
 
 show_title "系统转发"
@@ -179,11 +189,11 @@ else
   warn "缺少网关 DNS TCP 劫持；部分大响应 DNS 查询可能失败"
 fi
 
-show_title "sing-box 服务和监听"
-if systemctl is-active --quiet sing-box 2>/dev/null; then
-  ok "sing-box 服务正在运行"
+show_title "$KERNEL_SERVICE 服务和监听"
+if systemctl is-active --quiet "$KERNEL_SERVICE" 2>/dev/null; then
+  ok "$KERNEL_SERVICE 服务正在运行"
 else
-  bad "sing-box 服务没有运行"
+  bad "$KERNEL_SERVICE 服务没有运行"
 fi
 
 if ss -lnt 2>/dev/null | grep -q ":${PROXY_PORT} "; then
@@ -199,7 +209,14 @@ else
 fi
 
 if [ -f "$CONFIG_JSON" ]; then
-  if sing-box check -C /etc/sing-box >/dev/null 2>&1; then
+  if [ "$KERNEL_SERVICE" = "mihomo" ]; then
+    config_check="mihomo -t -f $CONFIG_JSON"
+    if mihomo -t -f "$CONFIG_JSON" >/dev/null 2>&1; then
+      ok "mihomo 配置检查通过"
+    else
+      bad "mihomo 配置检查失败"
+    fi
+  elif sing-box check -C /etc/sing-box >/dev/null 2>&1; then
     ok "sing-box 配置检查通过"
   else
     bad "sing-box 配置检查失败"
@@ -221,16 +238,28 @@ else
   warn "缺少 geoip-cn 规则，请在 bp 菜单更新国内分流规则"
 fi
 
-if [ -f "$CONFIG_JSON" ] && grep -q '"rule_set": "geosite-cn"' "$CONFIG_JSON"; then
-  ok "配置里启用了 geosite-cn 直连"
+if [ "$KERNEL_SERVICE" = "mihomo" ]; then
+  if [ -f "$CONFIG_JSON" ] && grep -q '"GEOSITE,CN,DIRECT"' "$CONFIG_JSON"; then
+    ok "配置里启用了 geosite-cn 直连"
+  else
+    warn "配置里没有看到 geosite-cn 直连"
+  fi
+  if [ -f "$CONFIG_JSON" ] && grep -q '"GEOIP,CN,DIRECT' "$CONFIG_JSON"; then
+    ok "配置里启用了 geoip-cn 直连"
+  else
+    warn "配置里没有看到 geoip-cn 直连"
+  fi
 else
-  warn "配置里没有看到 geosite-cn 直连"
-fi
-
-if [ -f "$CONFIG_JSON" ] && grep -q '"rule_set": "geoip-cn"' "$CONFIG_JSON"; then
-  ok "配置里启用了 geoip-cn 直连"
-else
-  warn "配置里没有看到 geoip-cn 直连"
+  if [ -f "$CONFIG_JSON" ] && grep -q '"rule_set": "geosite-cn"' "$CONFIG_JSON"; then
+    ok "配置里启用了 geosite-cn 直连"
+  else
+    warn "配置里没有看到 geosite-cn 直连"
+  fi
+  if [ -f "$CONFIG_JSON" ] && grep -q '"rule_set": "geoip-cn"' "$CONFIG_JSON"; then
+    ok "配置里启用了 geoip-cn 直连"
+  else
+    warn "配置里没有看到 geoip-cn 直连"
+  fi
 fi
 
 show_title "DNS 和联网测试"
@@ -300,8 +329,8 @@ else
   info "Docker 未安装或未运行，跳过容器检查"
 fi
 
-show_title "最近 sing-box 关键日志"
-journalctl -u sing-box -n 12 --no-pager 2>/dev/null | sed 's/^/  /' || true
+show_title "最近 $KERNEL_SERVICE 关键日志"
+journalctl -u "$KERNEL_SERVICE" -n 12 --no-pager 2>/dev/null | sed 's/^/  /' || true
 
 show_title "结论"
 echo "OK: $PASS  WARN: $WARN  FAIL: $FAIL"

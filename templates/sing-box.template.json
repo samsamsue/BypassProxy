@@ -29,54 +29,12 @@
         "server": "remote"
       },
       {
-        "domain_suffix": [
-          "google.com",
-          "googleapis.com",
-          "gstatic.com",
-          "googlevideo.com",
-          "googleusercontent.com",
-          "ggpht.com",
-          "youtube.com",
-          "youtube-nocookie.com",
-          "youtu.be",
-          "ytimg.com",
-          "github.com",
-          "githubusercontent.com",
-          "telegram.org",
-          "twitter.com",
-          "x.com",
-          "facebook.com",
-          "instagram.com"
-        ],
-        "server": "remote"
-      },
-      {
         "rule_set": "geosite-cn",
-        "server": "cn"
-      },
-      {
-        "domain_suffix": [
-          "cn",
-          "cloud.189.cn",
-          "cloud189.21cn.com",
-          "189.cn",
-          "21cn.com",
-          "e.189.cn",
-          "drive.quark.cn",
-          "quark.cn",
-          "uc.cn",
-          "ucpro.cn",
-          "alipan.com",
-          "aliyundrive.com",
-          "openapi.alipan.com",
-          "115.com",
-          "anxia.com"
-        ],
         "server": "cn"
       }
     ],
     "final": "remote",
-    "strategy": "prefer_ipv4"
+    "strategy": "ipv4_only"
   },
   "inbounds": [
     {
@@ -98,7 +56,7 @@
       "address": [
         "{{TUN_ADDRESS}}"
       ],
-      "mtu": 9000,
+      "mtu": 1500,
       "auto_route": true,
       "auto_redirect": true,
       "strict_route": true,
@@ -115,9 +73,6 @@
         "198.41.200.0/24",
         "{{DNS1}}/32",
         "{{DNS2}}/32"
-      ],
-      "route_exclude_address_set": [
-        "geoip-cn"
       ]
     }
   ],
@@ -172,24 +127,6 @@
       },
       {
         "ip_cidr": [
-          "64.233.160.0/19",
-          "66.102.0.0/20",
-          "66.249.64.0/19",
-          "72.14.192.0/18",
-          "74.125.0.0/16",
-          "108.177.0.0/17",
-          "142.250.0.0/15",
-          "172.217.0.0/16",
-          "172.253.0.0/16",
-          "173.194.0.0/16",
-          "209.85.128.0/17",
-          "216.58.192.0/19",
-          "216.239.32.0/19"
-        ],
-        "outbound": "proxy"
-      },
-      {
-        "ip_cidr": [
           "192.168.0.0/16",
           "10.0.0.0/8",
           "172.16.0.0/12",
@@ -201,102 +138,12 @@
         "outbound": "direct"
       },
       {
-        "network": "udp",
-        "port": [
-          123,
-          3478,
-          500,
-          4500,
-          6881
-        ],
-        "outbound": "direct"
-      },
-      {
         "rule_set": "geosite-cn",
         "outbound": "direct"
       },
       {
         "rule_set": "geoip-cn",
         "outbound": "direct"
-      },
-      {
-        "domain_suffix": [
-          "douyin.com",
-          "douyinpic.com",
-          "douyincdn.com",
-          "douyinstatic.com",
-          "amemv.com",
-          "amemv.cn",
-          "snssdk.com",
-          "iesdouyin.com",
-          "byteimg.com",
-          "bytecdn.cn",
-          "bytecdn.com",
-          "bytedance.com",
-          "bytedance.net",
-          "zijieapi.com",
-          "pstatp.com",
-          "toutiao.com",
-          "qq.com",
-          "tencent.com",
-          "gtimg.com",
-          "weixin.qq.com",
-          "weixinbridge.com",
-          "bilibili.com",
-          "bilivideo.com",
-          "taobao.com",
-          "tmall.com",
-          "alicdn.com",
-          "jd.com",
-          "360buyimg.com",
-          "meituan.com",
-          "amap.com",
-          "autonavi.com",
-          "baidu.com",
-          "bdimg.com",
-          "bdstatic.com",
-          "163.com",
-          "126.com",
-          "mi.com",
-          "xiaomi.com",
-          "cloud.189.cn",
-          "cloud189.21cn.com",
-          "189.cn",
-          "21cn.com",
-          "e.189.cn",
-          "drive.quark.cn",
-          "quark.cn",
-          "uc.cn",
-          "ucpro.cn",
-          "alipan.com",
-          "aliyundrive.com",
-          "openapi.alipan.com",
-          "115.com",
-          "anxia.com"
-        ],
-        "outbound": "direct"
-      },
-      {
-        "domain_suffix": [
-          "google.com",
-          "googleapis.com",
-          "gstatic.com",
-          "googlevideo.com",
-          "googleusercontent.com",
-          "ggpht.com",
-          "youtube.com",
-          "youtube-nocookie.com",
-          "youtu.be",
-          "ytimg.com",
-          "github.com",
-          "githubusercontent.com",
-          "telegram.org",
-          "twitter.com",
-          "x.com",
-          "facebook.com",
-          "instagram.com"
-        ],
-        "outbound": "proxy"
       }
     ]
   },

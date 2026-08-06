@@ -12,6 +12,7 @@ PANEL_PORT="${PANEL_PORT:-9091}"
 PANEL_SECRET="${PANEL_SECRET:-abc123}"
 TEST_BYTES="${SPEED_TEST_BYTES:-50000000}"
 TEST_URL="${SPEED_TEST_URL:-https://speed.cloudflare.com/__down?bytes=${TEST_BYTES}}"
+KERNEL="${KERNEL:-sing-box}"
 
 case "$SPEED_TEST_PORT" in
   ''|*[!0-9]*) echo "测速代理端口无效：$SPEED_TEST_PORT" >&2; exit 1 ;;
@@ -58,18 +59,28 @@ while kill -0 "$curl_pid" 2>/dev/null && [ "$attempt" -lt 60 ]; do
     -H "Authorization: Bearer $PANEL_SECRET" \
     "http://127.0.0.1:$PANEL_PORT/connections" 2>/dev/null || true)"
   if [ -n "$connections" ]; then
-    route_check="$(printf '%s' "$connections" | python3 -c '
+    route_check="$(printf '%s' "$connections" | KERNEL="$KERNEL" python3 -c '
 import json, sys
+import os
 try:
     items = json.load(sys.stdin).get("connections", [])
 except Exception:
     items = []
+kernel = os.environ.get("KERNEL", "sing-box").casefold()
 for item in items:
     metadata = item.get("metadata") or {}
-    if metadata.get("host") != "speed.cloudflare.com" or metadata.get("type") != "mixed/speed-test-in":
+    if metadata.get("host") != "speed.cloudflare.com":
+        continue
+    connection_type = str(metadata.get("type") or "").casefold()
+    inbound_name = str(metadata.get("inboundName") or "").casefold()
+    if kernel == "mihomo":
+        if inbound_name != "speed-test-in" and connection_type not in {"mixed/speed-test-in", "mixed"}:
+            continue
+    elif connection_type != "mixed/speed-test-in":
         continue
     chains = [str(value) for value in item.get("chains") or []]
-    valid = "proxy" in chains and "direct" not in chains
+    lower_chains = {value.casefold() for value in chains}
+    valid = "proxy" in lower_chains and "direct" not in lower_chains
     print(("VERIFIED|" if valid else "BYPASS|") + " -> ".join(reversed(chains)))
     break
 ' 2>/dev/null || true)"
@@ -93,13 +104,13 @@ curl_status=0
 wait "$curl_pid" || curl_status=$?
 if [ "$curl_status" -ne 0 ]; then
   echo
-  echo "测速失败。请先确认 sing-box 正常运行，并在节点面板选择可用节点。" >&2
+  echo "测速失败。请先确认 $KERNEL 正常运行，并在节点面板选择可用节点。" >&2
   exit 1
 fi
 
 case "$route_check" in
   VERIFIED\|*) echo "已确认代理链路：${route_check#VERIFIED|}" ;;
-  *) echo "无法从 sing-box 活动连接确认代理链路，本次结果作废。" >&2; exit 1 ;;
+  *) echo "无法从 $KERNEL 活动连接确认代理链路，本次结果作废。" >&2; exit 1 ;;
 esac
 
 http_code="$(sed -n '1p' "$result")"

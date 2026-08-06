@@ -2,14 +2,18 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
+  ArrowLeft,
   ArchiveRestore,
   Bug,
   CheckCircle2,
   Check,
   ChevronDown,
+  ChevronRight,
+  Cpu,
   ExternalLink,
   Globe2,
   Gauge,
+  Home,
   KeyRound,
   Loader2,
   MoreVertical,
@@ -21,6 +25,7 @@ import {
   RefreshCcw,
   Route,
   Save,
+  Send,
   Settings,
   Shield,
   TerminalSquare,
@@ -48,18 +53,20 @@ import "./styles.css";
 type ProxyMode = "rule" | "global" | "direct";
 
 type Status = {
-  services: { singBox: string; forwardTimer: string; admin: string };
+  services: { singBox: string; kernel?: string; kernelStatus?: string; forwardTimer: string; admin: string };
   addresses: { admin: string; adminZeroTier: string; panel: string; proxy: string };
   ports: { admin: string; panel: string; proxy: string };
   tunEnabled: boolean;
   proxyMode: ProxyMode;
+  kernel?: "sing-box" | "mihomo";
   nodeCount: number;
   subscriptionCount: number;
 };
 
-type Subscription = { id: string; name: string; url: string; enabled: boolean };
+type SubscriptionUserInfo = { upload?: number; download?: number; total?: number; expire?: number };
+type Subscription = { id: string; name: string; url: string; enabled: boolean; userinfo?: SubscriptionUserInfo };
 type ActionResult = { ok: boolean; output?: string; error?: string; message?: string };
-type ClashProxy = { type: string; name?: string; now?: string; all?: string[]; history?: Array<{ time: string; delay: number }> };
+type ClashProxy = { type: string; name?: string; now?: string; all?: string[]; udp?: boolean; history?: Array<{ time: string; delay: number }> };
 type ClashConnection = {
   id: string;
   metadata?: { host?: string; sourceIP?: string; sourcePort?: string | number; destinationIP?: string; destinationPort?: string | number; network?: string; type?: string };
@@ -110,6 +117,62 @@ function storedNodeDelays(): Record<string, number | null> {
   }
 }
 
+const nodeCountryAliases: Array<[string, string]> = [
+  ["United Arab Emirates", "🇦🇪"], ["United States", "🇺🇸"], ["United Kingdom", "🇬🇧"],
+  ["South Korea", "🇰🇷"], ["New Zealand", "🇳🇿"], ["South Africa", "🇿🇦"],
+  ["Great Britain", "🇬🇧"], ["Türkiye", "🇹🇷"], ["Turkey", "🇹🇷"],
+  ["America", "🇺🇸"], ["USA", "🇺🇸"], ["US", "🇺🇸"],
+  ["Britain", "🇬🇧"], ["UK", "🇬🇧"], ["GB", "🇬🇧"],
+  ["Japan", "🇯🇵"], ["JP", "🇯🇵"], ["香港", "🇭🇰"], ["Hong Kong", "🇭🇰"], ["HK", "🇭🇰"],
+  ["台湾", "🇹🇼"], ["Taiwan", "🇹🇼"], ["TW", "🇹🇼"],
+  ["新加坡", "🇸🇬"], ["Singapore", "🇸🇬"], ["SG", "🇸🇬"],
+  ["韩国", "🇰🇷"], ["Korea", "🇰🇷"], ["KR", "🇰🇷"],
+  ["美国", "🇺🇸"], ["中国", "🇨🇳"], ["China", "🇨🇳"], ["CN", "🇨🇳"],
+  ["德国", "🇩🇪"], ["Germany", "🇩🇪"], ["DE", "🇩🇪"],
+  ["法国", "🇫🇷"], ["France", "🇫🇷"], ["FR", "🇫🇷"],
+  ["加拿大", "🇨🇦"], ["Canada", "🇨🇦"], ["CA", "🇨🇦"],
+  ["澳大利亚", "🇦🇺"], ["澳洲", "🇦🇺"], ["Australia", "🇦🇺"], ["AU", "🇦🇺"],
+  ["俄罗斯", "🇷🇺"], ["Russia", "🇷🇺"], ["RU", "🇷🇺"],
+  ["荷兰", "🇳🇱"], ["Netherlands", "🇳🇱"], ["NL", "🇳🇱"],
+  ["印度", "🇮🇳"], ["India", "🇮🇳"], ["IN", "🇮🇳"],
+  ["阿联酋", "🇦🇪"], ["迪拜", "🇦🇪"], ["UAE", "🇦🇪"], ["AE", "🇦🇪"],
+  ["越南", "🇻🇳"], ["Vietnam", "🇻🇳"], ["VN", "🇻🇳"],
+  ["泰国", "🇹🇭"], ["Thailand", "🇹🇭"], ["TH", "🇹🇭"],
+  ["马来西亚", "🇲🇾"], ["Malaysia", "🇲🇾"], ["MY", "🇲🇾"],
+  ["菲律宾", "🇵🇭"], ["Philippines", "🇵🇭"], ["PH", "🇵🇭"],
+  ["巴西", "🇧🇷"], ["Brazil", "🇧🇷"], ["BR", "🇧🇷"],
+  ["西班牙", "🇪🇸"], ["Spain", "🇪🇸"], ["ES", "🇪🇸"],
+  ["意大利", "🇮🇹"], ["Italy", "🇮🇹"], ["IT", "🇮🇹"],
+  ["瑞士", "🇨🇭"], ["Switzerland", "🇨🇭"], ["CH", "🇨🇭"],
+  ["瑞典", "🇸🇪"], ["Sweden", "🇸🇪"], ["SE", "🇸🇪"],
+  ["挪威", "🇳🇴"], ["Norway", "🇳🇴"], ["NO", "🇳🇴"],
+  ["芬兰", "🇫🇮"], ["Finland", "🇫🇮"], ["FI", "🇫🇮"],
+  ["波兰", "🇵🇱"], ["Poland", "🇵🇱"], ["PL", "🇵🇱"],
+  ["爱尔兰", "🇮🇪"], ["Ireland", "🇮🇪"], ["IE", "🇮🇪"],
+  ["乌克兰", "🇺🇦"], ["Ukraine", "🇺🇦"], ["UA", "🇺🇦"],
+  ["以色列", "🇮🇱"], ["Israel", "🇮🇱"], ["IL", "🇮🇱"],
+  ["智利", "🇨🇱"], ["Chile", "🇨🇱"], ["CL", "🇨🇱"],
+  ["印尼", "🇮🇩"], ["印度尼西亚", "🇮🇩"], ["Indonesia", "🇮🇩"], ["ID", "🇮🇩"],
+];
+
+const nodeCountryBoundary = "[\\s\\[\\]【】()（）{}<>|/_\\\\\\-·.,:：#]";
+
+function formatNodeName(name: string) {
+  let formatted = name.normalize("NFC");
+  for (const [alias, flag] of nodeCountryAliases) {
+    if (/^[\u3400-\u9fff]+$/.test(alias)) {
+      formatted = formatted.split(alias).join(flag);
+      continue;
+    }
+    const pattern = new RegExp(
+      "(^|" + nodeCountryBoundary + ")" + alias.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&") + "(?=$|" + nodeCountryBoundary + "|\\d)",
+      "giu",
+    );
+    formatted = formatted.replace(pattern, (_match, prefix: string) => prefix + flag);
+  }
+  return formatted;
+}
+
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem(tokenKey) || "";
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -134,6 +197,54 @@ function Alert({ message }: { message: string }) {
   );
 }
 
+let overlaySequence = 0;
+
+function useOverlayHistory(open: boolean, onClose: () => void, kind: string) {
+  const onCloseRef = useRef(onClose);
+  const markerRef = useRef("");
+  const activeRef = useRef(false);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+    const marker = `${kind}:${++overlaySequence}`;
+    markerRef.current = marker;
+    activeRef.current = true;
+    window.history.pushState({ ...(window.history.state || {}), bypassproxyOverlay: marker }, "", window.location.href);
+
+    function handlePopState() {
+      if (!activeRef.current || markerRef.current !== marker) return;
+      activeRef.current = false;
+      markerRef.current = "";
+      onCloseRef.current();
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+      if (activeRef.current && window.history.state?.bypassproxyOverlay === marker) {
+        activeRef.current = false;
+        markerRef.current = "";
+        window.history.back();
+      }
+    };
+  }, [kind, open]);
+
+  return () => {
+    if (!activeRef.current) {
+      onCloseRef.current();
+      return;
+    }
+    if (window.history.state?.bypassproxyOverlay === markerRef.current) {
+      window.history.back();
+      return;
+    }
+    activeRef.current = false;
+    markerRef.current = "";
+    onCloseRef.current();
+  };
+}
+
 function DialogShell({
   title,
   description,
@@ -151,18 +262,71 @@ function DialogShell({
   wide?: boolean;
   topLayer?: boolean;
 }) {
+  const closeOverlay = useOverlayHistory(true, onClose, "dialog");
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && closeOverlay()}>
       <DialogContent wide={wide} topLayer={topLayer}>
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
           {description ? <DialogDescription className="mt-1 text-sm text-muted-foreground">{description}</DialogDescription> : null}
         </DialogHeader>
         <DialogBody>{children}</DialogBody>
-        <DialogFooter>{footer || <Button variant="secondary" onClick={onClose}>关闭</Button>}</DialogFooter>
+        <DialogFooter>{footer || <Button variant="secondary" onClick={closeOverlay}>关闭</Button>}</DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+function PageShell({
+  title,
+  description,
+  children,
+  footer,
+  onClose,
+  wide,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
+  return (
+    <section className={cn("bp-page-shell bp-route-page", wide && "bp-page-shell-wide")} role="dialog" aria-modal="true">
+      <header className="bp-page-header">
+        <Button size="icon" variant="ghost" aria-label="返回" title="返回" onClick={onClose}>
+          <ArrowLeft className="size-5" />
+        </Button>
+        <div className="min-w-0 flex-1">
+          <h1>{title}</h1>
+        </div>
+      </header>
+      <div className="bp-page-body">{children}</div>
+      {footer ? <div className="bp-page-footer">{footer}</div> : null}
+    </section>
+  );
+}
+
+function Surface({
+  page,
+  title,
+  description,
+  children,
+  footer,
+  onClose,
+  wide,
+}: {
+  page?: boolean;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
+  if (page) return <PageShell title={title} description={description} onClose={onClose} footer={footer} wide={wide}>{children}</PageShell>;
+  return <DialogShell title={title} description={description} onClose={onClose} footer={footer} wide={wide}>{children}</DialogShell>;
 }
 
 function Login({ onLogin }: { onLogin: () => void }) {
@@ -494,6 +658,7 @@ function LegacyNetworkOverview({ status }: { status: Status | null }) {
 
 function LegacyNetworkOverviewV2({ status, openAction }: { status: Status | null; openAction: (dialog: DialogState) => void }) {
   const singBoxActive = status?.services.singBox === "active";
+  const kernelLabel = status?.services.kernel === "mihomo" || status?.kernel === "mihomo" ? "mihomo" : "sing-box";
   const tunActive = status?.tunEnabled !== false;
   const natActive = status?.services.forwardTimer === "active";
   const flowActive = singBoxActive && tunActive && natActive;
@@ -562,22 +727,22 @@ function LegacyNetworkOverviewV2({ status, openAction }: { status: Status | null
       <div className="bp-topology-meta mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-white sm:text-xs">
         <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", natActive ? "bg-primary" : "bg-white/25")} />网关</span>
         <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", tunActive ? "bg-primary" : "bg-white/25")} />TUN</span>
-        <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", singBoxActive ? "bg-primary" : "bg-white/25")} />代理服务</span>
+        <span className="inline-flex items-center gap-1.5"><i className={cn("size-1.5 rounded-full", singBoxActive ? "bg-primary" : "bg-white/25")} />代理内核 · {kernelLabel}</span>
       </div>
       <div className="bp-topology-graph">
         <svg className="bp-graph-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           <Path id="path-lan-gateway" d="M 8 50 C 14 50, 18 50, 22 50" active={natActive} />
           <Path id="path-gateway-tun" d="M 27 50 C 33 50, 37 50, 42 50" active={singBoxActive && tunActive} />
-          <Path id="path-tun-direct" d="M 47 50 C 54 50, 56 29, 63 29" active={directPath} />
-          <Path id="path-tun-proxy" d="M 47 50 C 54 50, 56 71, 63 71" active={proxyPath} />
-          <Path id="path-direct-internet" d="M 68 29 C 77 29, 79 50, 88 50" active={directPath} />
-          <Path id="path-proxy-internet" d="M 68 71 C 77 71, 79 50, 88 50" active={proxyPath} />
+          <Path id="path-tun-direct" d="M 47 50 C 54 50, 56 22, 63 22" active={directPath} />
+          <Path id="path-tun-proxy" d="M 47 50 C 54 50, 56 78, 63 78" active={proxyPath} />
+          <Path id="path-direct-internet" d="M 68 22 C 77 22, 79 50, 88 50" active={directPath} />
+          <Path id="path-proxy-internet" d="M 68 78 C 77 78, 79 50, 88 50" active={proxyPath} />
         </svg>
         <Node icon={Wifi} label="设备" detail={`${activeDevices.length} 台活跃`} active={natActive} className="bp-graph-source" />
         <Node icon={Network} label="网关" detail="旁路由" active={natActive} className="bp-graph-gateway" />
         <Node icon={Shield} label="TUN" detail={tunActive ? "透明代理" : "已关闭"} active={singBoxActive && tunActive} className="bp-graph-tun" />
         <Node icon={Route} label="直连" detail="国内流量" active={directPath} className="bp-graph-direct" />
-        <Node icon={Shield} label="代理" detail="海外流量" active={proxyPath} className="bp-graph-proxy" />
+        <Node icon={Shield} label={kernelLabel} detail="海外流量" active={proxyPath} className="bp-graph-proxy" />
         <Node icon={Globe2} label="外网" detail="目标服务" active={flowActive} className="bp-graph-internet" />
       </div>
       <div className="bp-active-devices mt-3 flex min-w-0 items-center gap-2 text-[10px] text-white/55 sm:text-xs">
@@ -618,8 +783,11 @@ FunctionTile.displayName = "FunctionTile";
 type SheetActionItem = { label: string; icon: LucideIcon; onSelect: () => void; destructive?: boolean };
 
 function SheetAction({ title, items, children }: { title: string; items: SheetActionItem[]; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const closeOverlay = useOverlayHistory(open, () => setOpen(false), "sheet");
+
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={(nextOpen) => nextOpen ? setOpen(true) : closeOverlay()}>
       <SheetTrigger asChild>{children}</SheetTrigger>
       <SheetContent>
         <SheetHeader>
@@ -638,6 +806,68 @@ function SheetAction({ title, items, children }: { title: string; items: SheetAc
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function KernelManager({ openAction }: { openAction: (dialog: DialogState) => void }) {
+  return (
+    <SheetAction title="代理内核" items={[
+      { label: "使用 sing-box", icon: Shield, onSelect: () => openAction({ open: true, action: "switch-kernel-sing-box", title: "切换到 sing-box", description: "停止 mihomo，恢复 sing-box，并重新应用旁路由转发。", confirmText: "切换" }) },
+      { label: "使用 mihomo", icon: Network, onSelect: () => openAction({ open: true, action: "switch-kernel-mihomo", title: "切换到 mihomo", description: "安装并检查 mihomo，停止 sing-box 后启动 mihomo。失败会尝试恢复 sing-box。", confirmText: "切换" }) },
+      { label: "检查 mihomo", icon: CheckCircle2, onSelect: () => openAction({ open: true, action: "check-mihomo", title: "检查 mihomo", description: "下载并检查 mihomo 配置，不会切换当前运行内核。", confirmText: "检查" }) },
+    ]}>
+      <FunctionTile title="代理内核" icon={Cpu} />
+    </SheetAction>
+  );
+}
+
+function SettingsListItem({
+  title,
+  description,
+  icon: Icon,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className="bp-settings-row" onClick={onClick}>
+      <span className="bp-settings-row-icon"><Icon className="size-5" /></span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block text-sm font-medium text-white">{title}</span>
+        <span className="mt-1 block truncate text-xs text-white/45">{description}</span>
+      </span>
+      <ChevronRight className="size-5 shrink-0 text-white/40" />
+    </button>
+  );
+}
+
+function SettingsSwitchItem({
+  title,
+  description,
+  icon: Icon,
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="bp-settings-row">
+      <span className="bp-settings-row-icon"><Icon className="size-5" /></span>
+      <span className="min-w-0 flex-1 text-left">
+        <span className="block text-sm font-medium text-white">{title}</span>
+        <span className="mt-1 block truncate text-xs text-white/45">{description}</span>
+      </span>
+      <Switch pressed={checked} onPressedChange={onCheckedChange} disabled={disabled} aria-label={title} />
+    </div>
   );
 }
 
@@ -660,7 +890,6 @@ function ControlCenter({
   openSync: () => void;
   showRecent: () => void;
 }) {
-  const panelUrl = status?.addresses.panel || "";
   const actions = [
     {
       group: "网络维护",
@@ -732,7 +961,7 @@ function ControlCenter({
       icon: PanelTop,
       onClick: openNodes,
       tools: [
-        { label: "打开节点面板", icon: ExternalLink, onClick: () => panelUrl && window.open(panelUrl, "_blank", "noopener,noreferrer") },
+        { label: "打开节点面板", icon: ExternalLink, onClick: () => undefined },
         { label: "更新节点面板", icon: RefreshCcw, onClick: () => openAction({ open: true, action: "update-webui", title: "更新节点面板", description: "检查并更新 MetaCubeXD 静态面板。", confirmText: "更新" }) },
       ],
     },
@@ -786,57 +1015,90 @@ function ControlCenter({
       onClick: showRecent,
     },
   ];
-  const visibleTitles = ["网络诊断", "旁路由测试", "节点下载测速", "应用转发/NAT", "一键修复", "节点中心", "自定义分流", "备份同步"];
-  const visibleActions = visibleTitles.map((title) => actions.find((action) => action.title === title)).filter(Boolean) as typeof actions;
-  const compactLabels: Record<string, string> = {
-    网络诊断: "诊断",
-    旁路由测试: "旁路由测试",
-    节点下载测速: "测速",
-    检查配置: "检查",
-    "应用转发/NAT": "转发/NAT",
-    一键修复: "修复",
-    "重启 sing-box": "重启代理",
-    暂停代理: "暂停代理",
-    恢复代理: "恢复代理",
-    节点中心: "节点中心",
-    自定义分流: "自定规则",
-    备份同步: "备份",
+  const actionByTitle = (title: string) => actions.find((action) => action.title === title);
+  const actionRow = (title: string) => {
+    const action = actionByTitle(title);
+    return action ? <SettingsListItem key={title} title={title} description={action.description} icon={action.icon} onClick={action.onClick} /> : null;
   };
   return (
-    <section className="grid gap-7">
-      <div className="grid grid-cols-4 gap-x-3 gap-y-8 min-[430px]:grid-cols-5 sm:gap-x-6 sm:gap-y-10 lg:grid-cols-10">
-        {visibleActions.map((action) => <FunctionTile key={action.title} title={compactLabels[action.title]} icon={action.icon} onClick={action.onClick} />)}
-        <SheetAction title="代理服务" items={[
+    <section className="bp-settings-page">
+      <header className="bp-app-topbar bp-settings-heading">
+        <h1>设置</h1>
+      </header>
+      <div className="grid gap-8">
+        <section className="bp-settings-group">
+          <h2>运行控制</h2>
+          <div className="bp-settings-list">
+            <SheetAction title="代理服务" items={[
           { label: "重启代理", icon: Power, onSelect: () => openAction({ open: true, action: "restart-sing-box", title: "重启 sing-box", description: "重启代理服务", confirmText: "重启" }) },
           { label: "暂停代理", icon: Power, destructive: true, onSelect: () => openAction({ open: true, action: "pause-proxy", title: "暂停代理", description: "停止 sing-box 代理服务", confirmText: "暂停代理", dangerous: true }) },
           { label: "恢复代理", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "resume-proxy", title: "恢复代理", description: "启动代理并应用转发规则", confirmText: "恢复代理" }) },
         ]}>
-          <FunctionTile title="代理服务" icon={Power} />
+              <SettingsListItem title="代理服务" description="重启、暂停或恢复当前代理服务。" icon={Power} onClick={() => undefined} />
         </SheetAction>
-        <SheetAction title="更新" items={[
+            <SheetAction title="代理内核" items={[
+              { label: "使用 sing-box", icon: Shield, onSelect: () => openAction({ open: true, action: "switch-kernel-sing-box", title: "切换到 sing-box", description: "停止 mihomo，恢复 sing-box，并重新应用旁路由转发。", confirmText: "切换" }) },
+              { label: "使用 mihomo", icon: Network, onSelect: () => openAction({ open: true, action: "switch-kernel-mihomo", title: "切换到 mihomo", description: "安装并检查 mihomo，停止 sing-box 后启动 mihomo。", confirmText: "切换" }) },
+              { label: "检查 mihomo", icon: CheckCircle2, onSelect: () => openAction({ open: true, action: "check-mihomo", title: "检查 mihomo", description: "下载并检查 mihomo 配置，不会切换当前运行内核。", confirmText: "检查" }) },
+            ]}>
+              <SettingsListItem title="代理内核" description={`当前：${status?.kernel || status?.services.kernel || "读取中"}`} icon={Cpu} onClick={() => undefined} />
+            </SheetAction>
+            <SettingsSwitchItem
+              title="TUN 透明代理"
+              description="切换透明代理入口。"
+              icon={Shield}
+              checked={status?.tunEnabled !== false}
+              disabled={!status}
+              onCheckedChange={(checked) => openAction(checked
+                ? { open: true, action: "enable-tun", title: "开启 TUN", description: "开启 TUN 透明代理", confirmText: "开启 TUN" }
+                : { open: true, action: "disable-tun", title: "关闭 TUN", description: "关闭 TUN 透明代理", confirmText: "关闭 TUN", dangerous: true })}
+            />
+          </div>
+        </section>
+
+        <section className="bp-settings-group">
+          <h2>诊断与修复</h2>
+          <div className="bp-settings-list">
+            {actionRow("网络诊断")}
+            {actionRow("旁路由测试")}
+            {actionRow("节点下载测速")}
+            {actionRow("检查配置")}
+            {actionRow("应用转发/NAT")}
+            {actionRow("一键修复")}
+          </div>
+        </section>
+
+        <section className="bp-settings-group">
+          <h2>节点与分流</h2>
+          <div className="bp-settings-list">
+            {actionRow("节点中心")}
+            {actionRow("更新分流规则")}
+            <SettingsListItem title="自定义分流" description="管理直连和强制代理域名、IP 规则。" icon={Globe2} onClick={openCustomRules} />
+            <SheetAction title="更新" items={[
           { label: "更新程序", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "update-core", title: "更新 BypassProxy 脚本", description: "检查并更新项目脚本", confirmText: "更新脚本" }) },
           { label: "更新节点面板", icon: PanelTop, onSelect: () => openAction({ open: true, action: "update-webui", title: "更新节点面板", description: "检查并更新 MetaCubeXD 面板", confirmText: "更新" }) },
           { label: "更新分流规则", icon: Globe2, onSelect: () => openAction({ open: true, action: "update-rulesets", title: "更新国内分流规则", description: "检查并更新 geosite/geoip 规则", confirmText: "更新" }) },
         ]}>
-          <FunctionTile title="更新" icon={RefreshCcw} />
+              <SettingsListItem title="更新组件" description="更新脚本、节点面板或分流规则。" icon={RefreshCcw} onClick={() => undefined} />
         </SheetAction>
-        <SheetAction title="设置" items={[
-          { label: "检查配置", icon: CheckCircle2, onSelect: () => openAction({ open: true, action: "check-config", title: "检查配置", description: "检查当前 sing-box 配置", confirmText: "检查" }) },
-          { label: "TUN 开关", icon: Shield, onSelect: () => openAction(status?.tunEnabled === false
-            ? { open: true, action: "enable-tun", title: "开启 TUN", description: "开启 TUN 透明代理", confirmText: "开启 TUN" }
-            : { open: true, action: "disable-tun", title: "关闭 TUN", description: "关闭 TUN 透明代理", confirmText: "关闭 TUN", dangerous: true }) },
-          { label: "基础设置", icon: Settings, onSelect: openBasicSettings },
-          { label: "修改密钥", icon: KeyRound, onSelect: openPassword },
-          { label: "最近结果", icon: Activity, onSelect: showRecent },
-        ]}>
-          <FunctionTile title="设置" icon={Settings} />
-        </SheetAction>
+          </div>
+        </section>
+
+        <section className="bp-settings-group">
+          <h2>系统与备份</h2>
+          <div className="bp-settings-list">
+            <SettingsListItem title="基础设置" description="选择网卡并管理端口、DNS 和订阅下载设置。" icon={Save} onClick={openBasicSettings} />
+            <SettingsListItem title="修改密钥" description="修改管理后台和节点面板共用的登录密钥。" icon={KeyRound} onClick={openPassword} />
+            <SettingsListItem title="备份同步" description="配置 WebDAV 或 S3，并执行备份与恢复。" icon={ArchiveRestore} onClick={openSync} />
+            <SettingsListItem title="最近结果" description="查看上一次操作的摘要结果。" icon={Activity} onClick={showRecent} />
+          </div>
+        </section>
       </div>
     </section>
   );
 }
 
-function PasswordDialog({ onClose, onPasswordChanged }: { onClose: () => void; onPasswordChanged: () => void }) {
+function PasswordDialog({ onClose, onPasswordChanged, page = false }: { onClose: () => void; onPasswordChanged: () => void; page?: boolean }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -862,13 +1124,13 @@ function PasswordDialog({ onClose, onPasswordChanged }: { onClose: () => void; o
   }
 
   return (
-    <DialogShell
+    <Surface
+      page={page}
       title="修改登录密钥"
       description="管理后台和节点面板共用这个密钥。"
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" disabled={busy} onClick={onClose}>取消</Button>
           <Button busy={busy} disabled={!current || !next || !confirm} onClick={changePassword}>保存</Button>
         </>
       }
@@ -888,7 +1150,7 @@ function PasswordDialog({ onClose, onPasswordChanged }: { onClose: () => void; o
         </Label>
         {message ? <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{message}</div> : null}
       </div>
-    </DialogShell>
+    </Surface>
   );
 }
 
@@ -900,7 +1162,7 @@ function TextDialog({ title, content, onClose }: { title: string; content: strin
   );
 }
 
-function BasicSettingsDialog({ onClose, setResult }: { onClose: () => void; setResult: (result: string) => void }) {
+function BasicSettingsDialog({ onClose, setResult, page = false }: { onClose: () => void; setResult: (result: string) => void; page?: boolean }) {
   const empty: BasicSettings = {
     LAN_IF: "",
     LAN_NET: "",
@@ -973,14 +1235,14 @@ function BasicSettingsDialog({ onClose, setResult }: { onClose: () => void; setR
   }
 
   return (
-    <DialogShell
+    <Surface
+      page={page}
       title="基础设置"
       description="一般只需要选 LAN 网卡。旁路由 IP 和 LAN 网段会根据网卡自动识别。"
       onClose={onClose}
       wide
       footer={
         <>
-          <Button variant="secondary" disabled={busy} onClick={onClose}>关闭</Button>
           <Button busy={busy} onClick={save}>保存</Button>
         </>
       }
@@ -1080,7 +1342,7 @@ function BasicSettingsDialog({ onClose, setResult }: { onClose: () => void; setR
 
         {message ? <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{message}</div> : null}
       </div>
-    </DialogShell>
+    </Surface>
   );
 }
 
@@ -1089,10 +1351,12 @@ function CustomRulesDialog({
   onClose,
   setResult,
   openAction,
+  page = false,
 }: {
   onClose: () => void;
   setResult: (result: string) => void;
   openAction: (dialog: DialogState) => void;
+  page?: boolean;
 }) {
   const empty: CustomRules = { directDomains: [], directIps: [], proxyDomains: [], proxyIps: [] };
   const emptyDrafts: Record<keyof CustomRules, string> = { directDomains: "", directIps: "", proxyDomains: "", proxyIps: "" };
@@ -1174,14 +1438,14 @@ function CustomRulesDialog({
   ];
 
   return (
-    <DialogShell
+    <Surface
+      page={page}
       title="自定义分流"
       description="一行一条。强制代理优先级高于直连，可用来覆盖国内直连规则。"
       onClose={onClose}
       wide
       footer={
         <>
-          <Button variant="secondary" disabled={busy} onClick={onClose}>关闭</Button>
           <Button variant="secondary" busy={busy} onClick={() => save(false)}>保存</Button>
           <Button busy={busy} onClick={() => save(true)}>保存并应用</Button>
         </>
@@ -1214,7 +1478,7 @@ function CustomRulesDialog({
         ))}
         {message ? <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{message}</div> : null}
       </Tabs>
-    </DialogShell>
+    </Surface>
   );
 }
 
@@ -1222,10 +1486,12 @@ function BackupSyncDialog({
   onClose,
   openAction,
   setResult,
+  page = false,
 }: {
   onClose: () => void;
   openAction: (dialog: DialogState) => void;
   setResult: (result: string) => void;
+  page?: boolean;
 }) {
   const defaultSettings: SyncSettings = {
     provider: "webdav",
@@ -1332,14 +1598,14 @@ function BackupSyncDialog({
   ];
 
   return (
-    <DialogShell
+    <Surface
+      page={page}
       title="备份同步"
       description="备份会包含主配置、订阅、自定义分流、已解析节点和 sing-box 配置。支持 WebDAV 和 S3 兼容存储。"
       onClose={onClose}
       wide
       footer={
         <>
-          <Button variant="secondary" disabled={busy} onClick={onClose}>关闭</Button>
           <Button busy={busy} onClick={save}>保存同步设置</Button>
         </>
       }
@@ -1428,7 +1694,7 @@ function BackupSyncDialog({
         {!configured ? <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">上传和恢复需要先保存 {providerName} 设置；测试连接可以直接使用当前填写的内容。</div> : null}
         {message ? <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{message}</div> : null}
       </div>
-    </DialogShell>
+    </Surface>
   );
 }
 
@@ -1438,6 +1704,24 @@ function formatBytes(value = 0) {
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   const amount = value / (1024 ** index);
   return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`;
+}
+
+function formatTraffic(value = 0) {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const amount = value / (1024 ** index);
+  return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`;
+}
+
+function subscriptionTraffic(item: Subscription) {
+  const info = item.userinfo;
+  const used = (info?.upload || 0) + (info?.download || 0);
+  const total = info?.total || 0;
+  const percent = total > 0 ? Math.min(100, Math.max(0, (used / total) * 100)) : 0;
+  const usage = total > 0 ? `${formatTraffic(used)} / ${formatTraffic(total)}` : "流量未知";
+  const expiry = info?.expire ? new Date(info.expire * 1000).toISOString().slice(0, 10) : "长期有效";
+  return { usage, expiry, percent };
 }
 
 function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl: string }) {
@@ -1452,31 +1736,49 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
   const [testingNodes, setTestingNodes] = useState<string[]>([]);
   const [switching, setSwitching] = useState("");
   const [applyingGroup, setApplyingGroup] = useState(false);
+  const [appliedGroup, setAppliedGroup] = useState<{ group: string; node: string } | null>(null);
   const [error, setError] = useState("");
 
   function isInternalGroup(name: string) {
-    return new Set(["proxy", "global", "direct", "reject", "block", "auto"]).has(name.trim().toLowerCase());
+    return new Set(["proxy", "global", "direct", "reject", "block", "auto", "自动选择"]).has(name.trim().toLowerCase());
+  }
+
+  function findGroup(next: Record<string, ClashProxy>, wanted: string) {
+    const key = Object.keys(next).find((name) => name.trim().toLowerCase() === wanted);
+    return key ? next[key] : undefined;
   }
 
   const groups = Object.entries(proxies).filter(([name, proxy]) => !isInternalGroup(name) && Array.isArray(proxy.all) && proxy.all.length > 0);
+  const selectedIsGroup = groups.some(([name]) => name === selectedGroup);
   const groupProxy = proxies[selectedGroup];
   const nodeNames = groupProxy?.all || [];
   const selectedNode = groupProxy?.now || "";
   const canSelect = groupProxy?.type?.toLowerCase() === "selector";
 
   function effectiveGroup(next: Record<string, ClashProxy>) {
-    let group = next.proxy?.now || "";
+    let group = findGroup(next, "proxy")?.now || "";
     const visited = new Set<string>();
+    const matchingSelector = (target: string) => Object.entries(next)
+      .filter(([name, proxy]) => (
+        !isInternalGroup(name)
+        && proxy.type?.toLowerCase() === "selector"
+        && proxy.all?.includes(target)
+      ))
+      .sort(([left], [right]) => {
+        const leftSubscription = left.startsWith("订阅 - ") ? 0 : 1;
+        const rightSubscription = right.startsWith("订阅 - ") ? 0 : 1;
+        return leftSubscription - rightSubscription;
+      })[0];
     while (group && next[group] && !visited.has(group)) {
       visited.add(group);
       const candidate = next[group];
       if (!isInternalGroup(group) && Array.isArray(candidate.all) && candidate.all.length > 0) return group;
-      if (candidate.now && !next[candidate.now]) {
-        const matchingGroup = Object.entries(next).find(([name, proxy]) => !isInternalGroup(name) && proxy.all?.includes(candidate.now));
-        if (matchingGroup) return matchingGroup[0];
-      }
+      const matchingGroup = matchingSelector(group);
+      if (matchingGroup) return matchingGroup[0];
       group = candidate.now || "";
     }
+    const matchingGroup = matchingSelector(group);
+    if (matchingGroup) return matchingGroup[0];
     return "";
   }
 
@@ -1491,7 +1793,7 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
       setProxies(next);
       const nextGroups = Object.entries(next).filter(([name, proxy]) => !isInternalGroup(name) && Array.isArray(proxy.all) && proxy.all.length > 0);
       setSelectedGroup((current) => {
-        return effectiveGroup(next) || (current && next[current] ? current : null) || nextGroups.find(([name]) => name.startsWith("订阅 - "))?.[0] || (next.proxy ? "proxy" : nextGroups[0]?.[0] || "");
+        return effectiveGroup(next) || (current && next[current] ? current : null) || nextGroups.find(([name]) => name.startsWith("订阅 - "))?.[0] || nextGroups[0]?.[0] || "";
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "读取节点失败");
@@ -1532,11 +1834,15 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
   }
 
   async function applyGroup() {
-    if (!selectedGroup || !proxies.proxy?.all?.includes(selectedGroup) || applyingGroup) return;
+    if (!selectedGroup || !groupProxy || !selectedIsGroup || applyingGroup) return;
     setApplyingGroup(true);
     setError("");
     try {
-      await api("/api/proxies/select", { method: "POST", body: JSON.stringify({ group: "proxy", name: selectedGroup }) });
+      const result = await api<{ selectedGroup?: string; selectedNode?: string }>("/api/proxies/apply-group", {
+        method: "POST",
+        body: JSON.stringify({ group: selectedGroup }),
+      });
+      setAppliedGroup({ group: result.selectedGroup || selectedGroup, node: result.selectedNode || groupProxy.now || "" });
       await loadProxies();
     } catch (err) {
       setError(err instanceof Error ? err.message : "应用分组失败");
@@ -1646,11 +1952,11 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
               <SelectTrigger className="min-w-0 flex-1"><SelectValue placeholder="选择节点组" /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  {groups.map(([name, proxy]) => <SelectItem key={name} value={name}>{name.replace(/^订阅 - /, "")} · {proxy.all?.length || 0}</SelectItem>)}
+                  {groups.map(([name, proxy]) => <SelectItem key={name} value={name}>{formatNodeName(name.replace(/^订阅 - /, ""))} · {proxy.all?.length || 0}</SelectItem>)}
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Button size="sm" variant="secondary" busy={applyingGroup} disabled={applyingGroup || !proxies.proxy?.all?.includes(selectedGroup)} title="应用当前分组" onClick={applyGroup}>
+            <Button size="sm" variant="secondary" busy={applyingGroup} disabled={applyingGroup || !selectedIsGroup} title="应用当前分组" onClick={applyGroup}>
               <Check data-icon="inline-start" />应用组
             </Button>
             <Button size="icon" variant="secondary" busy={testingGroup} disabled={testing} title="测试当前组" aria-label="测试当前组" onClick={() => testNodes(nodeNames, "group")}>
@@ -1658,7 +1964,8 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
             </Button>
             <Button size="icon" variant="secondary" title="刷新节点" aria-label="刷新节点" onClick={loadProxies}><RefreshCcw data-icon="inline-start" /></Button>
           </div>
-          {!canSelect && selectedGroup ? <p className="text-sm text-muted-foreground">该组由 sing-box 自动选择，可测速但不能手动切换。</p> : null}
+          {appliedGroup ? <p className="text-xs text-success">已同步：{appliedGroup.group} · {appliedGroup.node} · MetaCubeXD：GLOBAL → PROXY</p> : null}
+          {!canSelect && selectedGroup ? <p className="text-sm text-muted-foreground">该组由内核自动选择，可测速；请选择具体订阅组后再手动切换节点。</p> : null}
           <div className="grid gap-2">
             {nodeNames.map((name) => {
               const active = selectedGroup === activeGroup && name === selectedNode;
@@ -1667,7 +1974,7 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
               return (
                 <div key={name} className={cn("flex min-w-0 items-center gap-2 rounded-lg bg-muted/45 p-1.5", active && "bg-accent")}>
                   <Button variant="ghost" className="h-auto min-w-0 flex-1 justify-start px-2 py-2" disabled={!canSelect} busy={switching === name} onClick={() => selectNode(name)}>
-                    <span className="min-w-0 flex-1 truncate text-left">{name}</span>
+                    <span className="bp-node-name min-w-0 flex-1 truncate text-left">{formatNodeName(name)}</span>
                     {active ? <Badge variant="success" className="shrink-0 border-0">当前</Badge> : null}
                   </Button>
                   <Button size="sm" variant="ghost" busy={testingNode} disabled={testing} className={cn("min-w-[68px] shrink-0 font-mono text-xs", delayColor(delay))} onClick={() => testNodes([name])}>
@@ -1893,10 +2200,411 @@ function SubscriptionCard({
               </CardContent>
             </Card>
           </SheetAction>
+
         ))}        {items.length === 0 ? <Card className="lg:col-span-2"><CardContent className="p-8 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
       </div>
       {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} /> : null}
     </section>
+  );
+}
+
+function SubscriptionManagerPage({
+  items,
+  reload,
+  setResult,
+  openAction,
+  openAdd,
+  onBack,
+}: {
+  items: Subscription[];
+  reload: () => void;
+  setResult: (result: string) => void;
+  openAction: (dialog: DialogState) => void;
+  openAdd: () => void;
+  onBack: () => void;
+}) {
+  const [proxies, setProxies] = useState<Record<string, ClashProxy>>({});
+  const [selectedGroup, setSelectedGroup] = useState("");
+  const [automatic, setAutomatic] = useState(false);
+  const [delays, setDelays] = useState<Record<string, number | null>>(storedNodeDelays);
+  const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const [testingNodes, setTestingNodes] = useState<string[]>([]);
+  const [applyingGroup, setApplyingGroup] = useState("");
+  const [switching, setSwitching] = useState("");
+  const [error, setError] = useState("");
+  const [editingItem, setEditingItem] = useState<Subscription | null>(null);
+  const [nodeQuery, setNodeQuery] = useState("");
+  const [nodeSort, setNodeSort] = useState<"default" | "delay" | "name">("default");
+
+  const autoGroupName = Object.keys(proxies).find((name) => name.trim() === "自动选择") || "自动选择";
+  const groupNameFor = (item: Subscription) => `订阅 - ${item.name}`;
+  const selectedProxy = automatic ? proxies[autoGroupName] : proxies[selectedGroup];
+  const nodeNames = selectedProxy?.all || [];
+  const activeNode = selectedProxy?.now || "";
+  const canSelect = !automatic && selectedProxy?.type?.toLowerCase() === "selector";
+  const visibleNodeNames = nodeNames
+    .filter((name) => !nodeQuery.trim() || name.toLowerCase().includes(nodeQuery.trim().toLowerCase()))
+    .slice()
+    .sort((left, right) => {
+      if (nodeSort === "name") return left.localeCompare(right, "zh-CN");
+      if (nodeSort === "delay") {
+        const leftDelay = delays[left] === undefined || delays[left] === null ? Number.POSITIVE_INFINITY : delays[left];
+        const rightDelay = delays[right] === undefined || delays[right] === null ? Number.POSITIVE_INFINITY : delays[right];
+        return (leftDelay as number) - (rightDelay as number);
+      }
+      return 0;
+    });
+
+  async function loadProxies() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api<{ proxies?: Record<string, ClashProxy> }>("/api/proxies");
+      const next = data.proxies || {};
+      setProxies(next);
+      const available = items.map(groupNameFor).filter((name) => next[name]?.all?.length);
+      setSelectedGroup((current) => current && next[current] ? current : available[0] || "");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取节点失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadProxies();
+  }, [items]);
+
+  async function applyGroup(group: string) {
+    if (!group || applyingGroup || !proxies[group]) return;
+    setSelectedGroup(group);
+    setAutomatic(false);
+    setApplyingGroup(group);
+    setError("");
+    try {
+      const result = await api<{ selectedGroup?: string; selectedNode?: string }>("/api/proxies/apply-group", {
+        method: "POST",
+        body: JSON.stringify({ group }),
+      });
+      setResult(`已应用${result.selectedGroup || group}：${result.selectedNode || "当前节点"}`);
+      await loadProxies();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "应用订阅失败");
+    } finally {
+      setApplyingGroup("");
+    }
+  }
+
+  async function toggleAutomatic(next: boolean) {
+    setAutomatic(next);
+    if (!next || !proxies[autoGroupName]) return;
+    setApplyingGroup(autoGroupName);
+    setError("");
+    try {
+      const result = await api<{ selectedNode?: string }>("/api/proxies/apply-group", {
+        method: "POST",
+        body: JSON.stringify({ group: autoGroupName }),
+      });
+      setResult(`已启用自动选择：${result.selectedNode || "节点由内核自动选择"}`);
+      await loadProxies();
+    } catch (err) {
+      setAutomatic(false);
+      setError(err instanceof Error ? err.message : "启用自动选择失败");
+    } finally {
+      setApplyingGroup("");
+    }
+  }
+
+  async function selectNode(name: string) {
+    if (!canSelect || !selectedGroup || name === activeNode || switching) return;
+    setSwitching(name);
+    setError("");
+    try {
+      await api("/api/proxies/select", { method: "POST", body: JSON.stringify({ group: selectedGroup, name }) });
+      setResult(`已切换节点：${name}`);
+      await loadProxies();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "切换节点失败");
+    } finally {
+      setSwitching("");
+    }
+  }
+
+  async function testNodes(names: string[]) {
+    if (!names.length || testing) return;
+    const queue = [...new Set(names)];
+    setTesting(true);
+    setTestingNodes(queue);
+    setError("");
+
+    function saveDelay(name: string, delay: number | null) {
+      setDelays((current) => {
+        const next = { ...current, [name]: delay };
+        localStorage.setItem(nodeDelayKey, JSON.stringify(next));
+        return next;
+      });
+      setTestingNodes((current) => current.filter((item) => item !== name));
+    }
+
+    async function worker() {
+      while (queue.length) {
+        const name = queue.shift();
+        if (!name) return;
+        try {
+          const result = await api<{ delays: Record<string, number | null> }>("/api/proxies/delay", {
+            method: "POST",
+            body: JSON.stringify({ names: [name] }),
+          });
+          saveDelay(name, result.delays[name] ?? null);
+        } catch {
+          saveDelay(name, null);
+        }
+      }
+    }
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(6, queue.length) }, () => worker()));
+    } finally {
+      setTesting(false);
+      setTestingNodes([]);
+    }
+  }
+
+  async function removeSubscription(item: Subscription) {
+    if (!window.confirm(`删除 ${item.name}？`)) return;
+    try {
+      await api(`/api/subscriptions/${item.id}`, { method: "DELETE" });
+      setResult(`已删除订阅：${item.name}`);
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除订阅失败");
+    }
+  }
+
+  function delayColor(delay: number | null | undefined) {
+    if (delay === undefined) return "is-muted";
+    if (delay === null || delay > 600) return "is-bad";
+    if (delay > 300) return "is-warn";
+    return "is-good";
+  }
+
+  function nodeType(name: string) {
+    const proxy = proxies[name];
+    const type = proxy?.type || "代理节点";
+    return `${type}${proxy?.udp ? " udp" : ""}`;
+  }
+
+  return (
+    <section className="bp-subscription-page">
+      <header className="bp-app-topbar bp-subscription-header">
+        <Button size="icon" variant="ghost" aria-label="返回主页" title="返回主页" onClick={onBack}>
+          <ArrowLeft className="size-6" strokeWidth={1.8} />
+        </Button>
+        <h1>订阅管理</h1>
+        <SheetAction title="订阅管理" items={[
+          { label: "添加订阅", icon: Plus, onSelect: openAdd },
+          { label: "更新全部订阅", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: "重新拉取所有启用订阅，失败的订阅会继续使用上次成功缓存。", confirmText: "更新并应用", directChoice: true }) },
+          { label: "刷新节点列表", icon: Gauge, onSelect: () => { void loadProxies(); } },
+        ]}>
+          <Button size="icon" variant="ghost" aria-label="订阅管理菜单" title="订阅管理菜单">
+            <MoreVertical className="size-6" strokeWidth={1.8} />
+          </Button>
+        </SheetAction>
+      </header>
+
+      {error ? <Alert message={error} /> : null}
+
+      <div className="bp-subscription-plans subscription-scroll flex min-w-0 gap-4 overflow-x-auto px-4 pb-2 snap-x snap-mandatory sm:px-0">
+        {items.map((item) => {
+          const group = groupNameFor(item);
+          const active = !automatic && selectedGroup === group;
+          const traffic = subscriptionTraffic(item);
+          return (
+            <Card
+              key={item.id}
+              className={cn("bp-subscription-plan snap-start", active && "is-active", !item.enabled && "is-disabled", applyingGroup === group && "is-loading")}
+              role="button"
+              tabIndex={item.enabled ? 0 : -1}
+              aria-disabled={!item.enabled}
+              onClick={() => item.enabled && void applyGroup(group)}
+              onKeyDown={(event) => {
+                if (item.enabled && (event.key === "Enter" || event.key === " ")) {
+                  event.preventDefault();
+                  void applyGroup(group);
+                }
+              }}
+            >
+              <CardContent className="flex min-h-[160px] flex-col gap-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="truncate text-[18px] font-bold leading-none">{item.name}</h2>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button size="icon" variant="ghost" className="bp-subscription-card-action" aria-label={`刷新${item.name}`} title={`刷新${item.name}`} onClick={(event) => { event.stopPropagation(); openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: `更新${item.name}及其他启用订阅。`, confirmText: "更新并应用", directChoice: true }); }}>
+                      <RefreshCcw className="size-3.5" />
+                    </Button>
+                    <SheetAction title={item.name} items={[
+                      { label: "编辑", icon: Pencil, onSelect: () => setEditingItem(item) },
+                      { label: item.enabled ? "停用" : "启用", icon: Power, onSelect: () => { void api(`/api/subscriptions/${item.id}/toggle`, { method: "POST", body: "{}" }).then(reload); } },
+                      { label: "删除", icon: Trash2, destructive: true, onSelect: () => { void removeSubscription(item); } },
+                    ]}>
+                      <Button size="icon" variant="ghost" className="bp-subscription-card-action" aria-label={`${item.name}更多操作`} title="更多操作" onClick={(event) => event.stopPropagation()}>
+                        <MoreVertical className="size-3.5" />
+                      </Button>
+                    </SheetAction>
+                  </div>
+                </div>
+                <div className="mt-auto grid gap-1.5">
+                  <div className="flex items-end justify-between gap-4">
+                    <p className="truncate text-xs">{traffic.usage}</p>
+                    <p className="max-w-[52%] truncate text-right text-xs opacity-55">{item.enabled ? traffic.expiry : "不可用"}</p>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-black/20"><div className="h-full rounded-full bg-black/25 transition-all" style={{ width: `${traffic.percent}%` }} /></div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {!items.length ? <Card className="min-w-full"><CardContent className="p-8 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
+      </div>
+
+      <div className="bp-subscription-nodes px-1.5">
+        <div className="bp-node-toolbar">
+          <div className="bp-subscription-auto flex items-center gap-2">
+            <span>自动选择</span>
+            <Switch pressed={automatic} onPressedChange={(pressed) => void toggleAutomatic(pressed)} disabled={Boolean(applyingGroup)} aria-label="自动选择节点" />
+            {applyingGroup === autoGroupName ? <Loader2 className="size-4 animate-spin text-primary" /> : null}
+          </div>
+          <Button size="icon" variant="ghost" busy={testing} disabled={!nodeNames.length || testing} title="测试当前节点延迟" aria-label="测试当前节点延迟" onClick={() => void testNodes(nodeNames)}>
+            {testing ? null : <Gauge className="size-5" />}
+          </Button>
+        </div>
+        <div className="bp-node-filters">
+          <Input value={nodeQuery} onChange={(event) => setNodeQuery(event.target.value)} placeholder="筛选节点" aria-label="筛选节点" />
+          <Select value={nodeSort} onValueChange={(value) => setNodeSort(value as typeof nodeSort)}>
+            <SelectTrigger className="min-w-0" aria-label="节点排序"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">默认排序</SelectItem>
+              <SelectItem value="delay">延迟从低到高</SelectItem>
+              <SelectItem value="name">名称排序</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="grid gap-2">
+          {visibleNodeNames.map((name) => {
+            const active = name === activeNode && !automatic;
+            const delay = Object.prototype.hasOwnProperty.call(delays, name) ? delays[name] : undefined;
+            const testingNode = testingNodes.includes(name);
+            return (
+              <button key={name} type="button" className={cn("bp-node-card", active && "is-active", !canSelect && "is-auto")} disabled={!canSelect || switching === name} onClick={() => void selectNode(name)}>
+                <span className="min-w-0 flex-1 text-left">
+                  <span className="bp-node-name block truncate text-[14px] leading-6">{formatNodeName(name)}</span>
+                  <span className="mt-1 block text-xs text-white/35">{nodeType(name)}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-3">
+                  {active ? <Badge variant="success" className="border-0 text-sm">当前</Badge> : null}
+                  <span className={cn("bp-node-delay text-sm", delayColor(delay))}>{testingNode ? <Loader2 className="size-4 animate-spin" /> : delay === null ? "超时" : delay === undefined || delay <= 0 ? "-" : `${delay} ms`}</span>
+                </span>
+              </button>
+            );
+          })}
+          {!loading && !nodeNames.length ? <div className="rounded-2xl bg-muted/50 p-8 text-center text-sm text-muted-foreground">暂无可用节点</div> : null}
+          {loading && !nodeNames.length ? <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground"><Loader2 className="size-5 animate-spin" />正在读取节点</div> : null}
+          {!loading && nodeNames.length > 0 && !visibleNodeNames.length ? <div className="rounded-2xl bg-muted/50 p-8 text-center text-sm text-muted-foreground">没有匹配的节点</div> : null}
+        </div>
+      </div>
+      {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} /> : null}
+    </section>
+  );
+}
+
+function HomeSummary({
+  status,
+  subscriptions,
+  openNodes,
+  openSubscriptions,
+  openAction,
+}: {
+  status: Status | null;
+  subscriptions: Subscription[];
+  openNodes: () => void;
+  openSubscriptions: () => void;
+  openAction: (dialog: DialogState) => void;
+}) {
+  const stats = [
+    { label: "代理内核", value: status?.kernel || status?.services.kernel || "读取中" },
+    { label: "代理模式", value: status?.proxyMode === "global" ? "全局" : status?.proxyMode === "direct" ? "直连" : "规则" },
+    { label: "节点", value: `${status?.nodeCount ?? 0}` },
+    { label: "订阅", value: `${subscriptions.length}` },
+  ];
+  return (
+    <section className="bp-home-summary">
+      <div className="bp-home-summary-heading">
+        <h2>运行概览</h2>
+        <span>状态自动刷新</span>
+      </div>
+      <div className="bp-home-stats">
+        {stats.map((item) => (
+          <div key={item.label} className="bp-home-stat">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="bp-home-actions" aria-label="常用操作">
+        <FunctionTile title="节点中心" icon={PanelTop} onClick={openNodes} />
+        <FunctionTile title="订阅管理" icon={Send} onClick={openSubscriptions} />
+        <FunctionTile title="网络诊断" icon={Bug} onClick={() => openAction({ open: true, action: "diagnose-network", title: "网络诊断", description: "检查服务、DNS、转发、订阅节点等常见问题。", confirmText: "开始诊断" })} />
+        <FunctionTile title="一键修复" icon={Wrench} onClick={() => openAction({ open: true, action: "repair", title: "一键修复", description: "修复配置、服务和转发状态。", confirmText: "开始修复" })} />
+      </div>
+    </section>
+  );
+}
+
+type AppTab = "home" | "subscriptions" | "settings";
+type AppRoute = AppTab | "basic-settings" | "password" | "custom-rules" | "sync";
+
+const appRoutes: AppRoute[] = ["home", "subscriptions", "settings", "basic-settings", "password", "custom-rules", "sync"];
+
+function routeFromLocation(): AppRoute {
+  const value = new URLSearchParams(window.location.search).get("route");
+  return value && appRoutes.includes(value as AppRoute) ? value as AppRoute : "home";
+}
+
+function urlForRoute(route: AppRoute) {
+  const url = new URL(window.location.href);
+  if (route === "home") url.searchParams.delete("route");
+  else url.searchParams.set("route", route);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function BottomTabBar({ activeTab, onChange }: { activeTab: AppTab; onChange: (tab: AppTab) => void }) {
+  const tabs: Array<{ value: AppTab; label: string; icon: LucideIcon }> = [
+    { value: "home", label: "主页", icon: Home },
+    { value: "subscriptions", label: "订阅", icon: Send },
+    { value: "settings", label: "设置", icon: Settings },
+  ];
+
+  return (
+    <nav className="bp-tabbar" aria-label="主导航">
+      <div className="bp-tabbar-inner" role="tablist">
+        {tabs.map(({ value, label, icon: Icon }) => (
+          <Button
+            key={value}
+            type="button"
+            variant="ghost"
+            role="tab"
+            aria-selected={activeTab === value}
+            className={cn("bp-tabbar-item", activeTab === value && "is-active")}
+            onClick={() => onChange(value)}
+          >
+            <Icon className="size-4" strokeWidth={activeTab === value ? 2.4 : 1.8} />
+            <span>{label}</span>
+          </Button>
+        ))}
+      </div>
+    </nav>
   );
 }
 
@@ -1906,18 +2614,22 @@ function App() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dialog, setDialog] = useState<DialogState>({ open: false, action: "", title: "", description: "" });
   const [addOpen, setAddOpen] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
-  const [basicOpen, setBasicOpen] = useState(false);
   const [nodesOpen, setNodesOpen] = useState(false);
-  const [customRulesOpen, setCustomRulesOpen] = useState(false);
-  const [syncOpen, setSyncOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [route, setRoute] = useState<AppRoute>(() => routeFromLocation());
   const [busyAction, setBusyAction] = useState("");
   const [dialogOutput, setDialogOutput] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [lastResult, setLastResult] = useState("");
   const [error, setError] = useState("");
   const [modeBusy, setModeBusy] = useState(false);
+
+  function navigate(next: AppRoute, replace = false) {
+    if (next === route) return;
+    const url = urlForRoute(next);
+    window.history[replace ? "replaceState" : "pushState"]({ bypassproxyRoute: next }, "", url);
+    setRoute(next);
+  }
 
   async function loadAll() {
     if (!loggedIn) return;
@@ -1999,6 +2711,14 @@ function App() {
   }
 
   useEffect(() => {
+    function handlePopState() {
+      setRoute(routeFromLocation());
+    }
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
     loadAll();
     const timer = window.setInterval(loadAll, 12000);
     return () => window.clearInterval(timer);
@@ -2006,28 +2726,42 @@ function App() {
 
   if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
 
+  const rootTab: AppTab = route === "subscriptions"
+    ? "subscriptions"
+    : route === "settings" || ["basic-settings", "password", "custom-rules", "sync"].includes(route)
+      ? "settings"
+      : "home";
+
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto grid w-full max-w-[1120px] gap-12 px-4 pb-10 sm:gap-14 sm:px-6 sm:pb-14 lg:px-8">
-        <section className="-mx-4 flex min-h-0 flex-col overflow-hidden rounded-b-[20px] bg-[linear-gradient(180deg,#5f5f5f,#2d2d2d)] lg:-mx-8 sm:-mx-6">
-          <HeaderPanel
-            proxyMode={status?.proxyMode || "rule"}
-            modeBusy={modeBusy}
-            onModeChange={changeProxyMode}
-          />
-          <LegacyNetworkOverviewV2 status={status} openAction={openAction} />
-        </section>
+    <main className="min-h-screen bg-background pb-28 sm:pb-10">
+      <div className="mx-auto grid w-full max-w-[1120px] gap-12 px-4 sm:gap-14 sm:px-6 lg:px-8">
+        <div className={cn("min-w-0", rootTab !== "home" && "hidden")}>
+          <section className="-mx-4 flex min-h-0 flex-col overflow-hidden rounded-b-[20px] bg-[linear-gradient(180deg,#5f5f5f,#2d2d2d)] lg:-mx-8 sm:-mx-6">
+            <HeaderPanel
+              proxyMode={status?.proxyMode || "rule"}
+              modeBusy={modeBusy}
+              onModeChange={changeProxyMode}
+            />
+            <LegacyNetworkOverviewV2 status={status} openAction={openAction} />
+          </section>
+          <HomeSummary status={status} subscriptions={subscriptions} openNodes={() => setNodesOpen(true)} openSubscriptions={() => navigate("subscriptions")} openAction={openAction} />
+        </div>
 
         {error ? <Alert message={error} /> : null}
-        <SubscriptionCard items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} />
-        <ControlCenter status={status} openAction={openAction} openPassword={() => setPasswordOpen(true)} openBasicSettings={() => setBasicOpen(true)} openNodes={() => setNodesOpen(true)} openCustomRules={() => setCustomRulesOpen(true)} openSync={() => setSyncOpen(true)} showRecent={() => setRecentOpen(true)} />
+        <div className={cn("min-w-0", rootTab !== "subscriptions" && "hidden")}>
+          <SubscriptionManagerPage items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} onBack={() => navigate("home", true)} />
+        </div>
+        <div className={cn("min-w-0", rootTab !== "settings" && "hidden")}>
+          <ControlCenter status={status} openAction={openAction} openPassword={() => navigate("password")} openBasicSettings={() => navigate("basic-settings")} openNodes={() => setNodesOpen(true)} openCustomRules={() => navigate("custom-rules")} openSync={() => navigate("sync")} showRecent={() => setRecentOpen(true)} />
+        </div>
+        {route === "basic-settings" ? <BasicSettingsDialog page onClose={() => navigate("settings", true)} setResult={setLastResult} /> : null}
+        {route === "password" ? <PasswordDialog page onClose={() => navigate("settings", true)} onPasswordChanged={() => setLoggedIn(false)} /> : null}
+        {route === "custom-rules" ? <CustomRulesDialog page onClose={() => navigate("settings", true)} setResult={setLastResult} openAction={openAction} /> : null}
+        {route === "sync" ? <BackupSyncDialog page onClose={() => navigate("settings", true)} openAction={openAction} setResult={setLastResult} /> : null}
       </div>
+      <BottomTabBar activeTab={rootTab} onChange={(next) => navigate(next)} />
       {addOpen ? <AddSubscriptionDialog onClose={() => setAddOpen(false)} reload={loadAll} setResult={setLastResult} /> : null}
-      {passwordOpen ? <PasswordDialog onClose={() => setPasswordOpen(false)} onPasswordChanged={() => setLoggedIn(false)} /> : null}
-      {basicOpen ? <BasicSettingsDialog onClose={() => setBasicOpen(false)} setResult={setLastResult} /> : null}
       {nodesOpen ? <NodeCenterDialog onClose={() => setNodesOpen(false)} panelUrl={status?.addresses.panel || ""} /> : null}
-      {customRulesOpen ? <CustomRulesDialog onClose={() => setCustomRulesOpen(false)} setResult={setLastResult} openAction={openAction} /> : null}
-      {syncOpen ? <BackupSyncDialog onClose={() => setSyncOpen(false)} openAction={openAction} setResult={setLastResult} /> : null}
       {recentOpen ? <TextDialog title="最近结果" content={lastResult} onClose={() => setRecentOpen(false)} /> : null}
       <ActionDialog dialog={dialog} setDialog={setDialog} running={Boolean(busyAction)} output={dialogOutput} error={dialogError} onConfirm={confirmAction} />
     </main>

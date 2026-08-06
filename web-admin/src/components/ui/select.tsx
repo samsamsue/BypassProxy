@@ -66,7 +66,7 @@ function SelectContent({ className, children, position = "popper", ...props }: R
       <SelectPrimitive.Content
         data-bypassproxy-select-content
         className={cn(
-          "relative z-50 max-h-80 min-w-[8rem] overflow-hidden rounded-2xl bg-popover text-foreground shadow-none",
+          "relative z-[120] max-h-80 min-w-[8rem] overflow-hidden rounded-2xl bg-popover text-foreground shadow-none",
           position === "popper" && "data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1",
           className,
         )}
