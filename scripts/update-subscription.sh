@@ -10,6 +10,16 @@ SUBSCRIPTION_CACHE_DIR="${SUBSCRIPTION_CACHE_DIR:-/etc/bypassproxy/subscription-
 SUBSCRIPTION_LAST_DIR="${SUBSCRIPTION_LAST_DIR:-$SUBSCRIPTION_CACHE_DIR/last}"
 SUBSCRIPTION_MANIFEST="${SUBSCRIPTION_MANIFEST:-$SUBSCRIPTION_CACHE_DIR/manifest.json}"
 SUBSCRIPTION_INFO="${SUBSCRIPTION_INFO:-$SUBSCRIPTION_CACHE_DIR/subscription-info.json}"
+ONLY_SUBSCRIPTION_ID="${BYPASSPROXY_SUBSCRIPTION_ID:-}"
+
+if [ -n "$ONLY_SUBSCRIPTION_ID" ]; then
+  case "$ONLY_SUBSCRIPTION_ID" in
+    *[!0-9]*) echo "订阅编号无效：$ONLY_SUBSCRIPTION_ID" >&2; exit 2 ;;
+  esac
+  normalized_id="$(printf '%s' "$ONLY_SUBSCRIPTION_ID" | sed 's/^0*//')"
+  [ -n "$normalized_id" ] || normalized_id=0
+  ONLY_SUBSCRIPTION_ID="$(printf '%03d' "$normalized_id")"
+fi
 
 if [ ! -f "$CONF" ]; then
   echo "缺少配置文件：$CONF" >&2
@@ -32,14 +42,21 @@ if [ -d "$SUBSCRIPTION_DIR" ] && find "$SUBSCRIPTION_DIR" -maxdepth 1 -type f -n
   has_managed=1
 fi
 
+if [ -n "$ONLY_SUBSCRIPTION_ID" ] && [ ! -f "$SUBSCRIPTION_DIR/$ONLY_SUBSCRIPTION_ID.conf" ]; then
+  echo "订阅不存在：$ONLY_SUBSCRIPTION_ID" >&2
+  exit 1
+fi
+
 if [ "$has_managed" = "0" ] && [ -z "$SUBSCRIBE_URL" ] && [ -z "$SUBSCRIBE_URLS" ]; then
   echo "订阅/节点地址为空。请运行 sudo bp 修改配置，或编辑 router.conf。" >&2
   exit 1
 fi
 
 mkdir -p "$(dirname "$OUTBOUNDS_JSON")" "$(dirname "$SUBSCRIPTION_CACHE")" "$SUBSCRIPTION_CACHE_DIR" "$SUBSCRIPTION_LAST_DIR"
-find "$SUBSCRIPTION_CACHE_DIR" -maxdepth 1 -type f -name 'source-*.txt' -delete
-printf "[]" > "$SUBSCRIPTION_MANIFEST"
+if [ -z "$ONLY_SUBSCRIPTION_ID" ]; then
+  find "$SUBSCRIPTION_CACHE_DIR" -maxdepth 1 -type f -name 'source-*.txt' -delete
+  printf "[]" > "$SUBSCRIPTION_MANIFEST"
+fi
 
 download() {
   url="$1"
@@ -98,6 +115,7 @@ except Exception:
     data = []
 if not isinstance(data, list):
     data = []
+data = [entry for entry in data if isinstance(entry, dict) and str(entry.get("id") or "") != key]
 try:
     info = json.loads(info_path.read_text(encoding="utf-8-sig"))
 except Exception:
@@ -126,9 +144,15 @@ save_source() {
   source="$1"
   label="$2"
   key="${3:-}"
+  requested_cache="${4:-}"
   attempts=$((attempts + 1))
-  cache="$SUBSCRIPTION_CACHE_DIR/source-$(printf "%03d" "$attempts").txt"
-  headers="$SUBSCRIPTION_CACHE_DIR/headers-$(printf "%03d" "$attempts").txt"
+  if [ -n "$requested_cache" ]; then
+    cache="$requested_cache"
+    headers="$SUBSCRIPTION_CACHE_DIR/headers-single-${key}.txt"
+  else
+    cache="$SUBSCRIPTION_CACHE_DIR/source-$(printf "%03d" "$attempts").txt"
+    headers="$SUBSCRIPTION_CACHE_DIR/headers-$(printf "%03d" "$attempts").txt"
+  fi
   if [ -z "$key" ]; then
     key="$(printf "%03d" "$attempts")"
   fi
@@ -165,7 +189,48 @@ save_source() {
 count=0
 attempts=0
 failed=0
-if [ "$has_managed" = "1" ]; then
+if [ -n "$ONLY_SUBSCRIPTION_ID" ]; then
+  item="$SUBSCRIPTION_DIR/$ONLY_SUBSCRIPTION_ID.conf"
+  NAME=""
+  URL=""
+  ENABLED=1
+  # shellcheck disable=SC1090
+  . "$item"
+  ENABLED="${ENABLED:-1}"
+  URL="${URL:-}"
+  NAME="${NAME:-$ONLY_SUBSCRIPTION_ID}"
+  if [ "$ENABLED" = "0" ]; then
+    echo "订阅已停用：$ONLY_SUBSCRIPTION_ID" >&2
+    exit 1
+  fi
+  if [ -z "$URL" ]; then
+    echo "订阅地址为空：$ONLY_SUBSCRIPTION_ID" >&2
+    exit 1
+  fi
+  existing_cache="$(python3 - "$SUBSCRIPTION_MANIFEST" "$ONLY_SUBSCRIPTION_ID" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest = Path(sys.argv[1])
+wanted = sys.argv[2]
+try:
+    entries = json.loads(manifest.read_text(encoding="utf-8-sig"))
+except Exception:
+    entries = []
+for entry in entries if isinstance(entries, list) else []:
+    if str(entry.get("id") or "") == wanted and entry.get("file"):
+        print(entry["file"])
+        break
+PY
+)"
+  if [ -n "$existing_cache" ]; then
+    existing_cache="$SUBSCRIPTION_CACHE_DIR/$existing_cache"
+  else
+    existing_cache="$SUBSCRIPTION_CACHE_DIR/source-single-$ONLY_SUBSCRIPTION_ID.txt"
+  fi
+  save_source "$URL" "$NAME" "$ONLY_SUBSCRIPTION_ID" "$existing_cache"
+elif [ "$has_managed" = "1" ]; then
   for item in "$SUBSCRIPTION_DIR"/*.conf; do
     [ -f "$item" ] || continue
     NAME=""
@@ -197,9 +262,11 @@ if [ "$count" -eq 0 ]; then
   exit 1
 fi
 
-first_cache="$(find "$SUBSCRIPTION_CACHE_DIR" -maxdepth 1 -type f -name 'source-*.txt' | sort | head -n 1)"
-if [ "$count" -eq 1 ] && [ -n "$first_cache" ]; then
-  cp "$first_cache" "$SUBSCRIPTION_CACHE"
+if [ -z "$ONLY_SUBSCRIPTION_ID" ]; then
+  first_cache="$(find "$SUBSCRIPTION_CACHE_DIR" -maxdepth 1 -type f -name 'source-*.txt' | sort | head -n 1)"
+  if [ "$count" -eq 1 ] && [ -n "$first_cache" ]; then
+    cp "$first_cache" "$SUBSCRIPTION_CACHE"
+  fi
 fi
 
 python3 "$APP_DIR/scripts/extract-outbounds.py" "$SUBSCRIPTION_CACHE_DIR" "$OUTBOUNDS_JSON"

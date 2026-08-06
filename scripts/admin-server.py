@@ -322,6 +322,9 @@ def action_steps(action: str, data: dict) -> list[tuple[str, list[str], int, dic
         return env
     if action == "update-subscription":
         sub_env = dict(router_env)
+        subscription_id = str(data.get("subscriptionId") or "").strip()
+        if subscription_id:
+            sub_env["BYPASSPROXY_SUBSCRIPTION_ID"] = subscription_id
         if data.get("direct"):
             sub_env["BYPASSPROXY_DIRECT_DOWNLOAD"] = "1"
         return [
@@ -956,9 +959,6 @@ class Handler(SimpleHTTPRequestHandler):
             group = str(data.get("group") or "").strip()
             if not group:
                 raise ValueError("请选择要应用的订阅组")
-            if current_kernel() != "mihomo":
-                raise RuntimeError("当前内核不支持按订阅组应用")
-
             all_proxies = clash_api_request("GET", "/proxies").get("proxies", {})
             candidate_name = next(
                 (name for name in all_proxies if str(name).strip().casefold() == group.casefold()),
@@ -970,6 +970,33 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("所选分组不存在或没有可用节点")
 
             selected_node = str(candidate.get("now") or members[0]).strip()
+            if current_kernel() == "sing-box":
+                proxy_group_name = next(
+                    (name for name in all_proxies if str(name).strip().casefold() == "proxy"),
+                    None,
+                )
+                if not proxy_group_name:
+                    raise RuntimeError("sing-box 主选择器不存在")
+                proxy_members = all_proxies.get(proxy_group_name, {}).get("all", [])
+                if candidate_name not in proxy_members:
+                    raise ValueError("所选订阅组不在 sing-box 主选择器中，请先更新并应用订阅")
+
+                # sing-box uses nested selectors: route the main proxy
+                # selector to the selected subscription or auto selector.
+                clash_api_request("PUT", f"/proxies/{quote(proxy_group_name, safe='')}", {"name": candidate_name})
+                refreshed = clash_api_request("GET", "/proxies").get("proxies", {})
+                proxy_now = str(refreshed.get(proxy_group_name, {}).get("now", ""))
+                group_now = str(refreshed.get(candidate_name, {}).get("now", ""))
+                if proxy_now != candidate_name:
+                    raise RuntimeError("sing-box 主选择器未切换到所选分组，请重试")
+                return {
+                    "ok": True,
+                    "selectedGroup": candidate_name,
+                    "selectedNode": group_now or selected_node,
+                    "groupNow": group_now,
+                    "proxyNow": proxy_now,
+                }
+
             proxy_group_name = next(
                 (name for name in all_proxies if str(name).strip().casefold() == "proxy"),
                 "PROXY",
@@ -985,22 +1012,25 @@ class Handler(SimpleHTTPRequestHandler):
             # Selector groups keep their own selection. URLTest groups choose
             # automatically and cannot be changed through the selector PUT.
             candidate_type = str(candidate.get("type") or "").strip().casefold()
-            if candidate_type not in {"urltest", "fallback", "loadbalance"}:
+            automatic_group = str(candidate_name or "").strip().casefold() == "自动选择".casefold()
+            selected_proxy = candidate_name if automatic_group else selected_node
+            if not automatic_group and candidate_type not in {"urltest", "fallback", "loadbalance"}:
                 clash_api_request("PUT", f"/proxies/{quote(candidate_name, safe='')}", {"name": selected_node})
-            # PROXY is the concrete group exposed to MetaCubeXD through GLOBAL.
-            clash_api_request("PUT", f"/proxies/{quote(proxy_group_name, safe='')}", {"name": selected_node})
+            # Keep the automatic group selected in PROXY so url-test can continue
+            # choosing nodes; manual subscription groups use a concrete node.
+            clash_api_request("PUT", f"/proxies/{quote(proxy_group_name, safe='')}", {"name": selected_proxy})
             clash_api_request("PUT", f"/proxies/{quote(global_group_name, safe='')}", {"name": proxy_group_name})
 
             refreshed = clash_api_request("GET", "/proxies").get("proxies", {})
             proxy_now = refreshed.get(proxy_group_name, {}).get("now", "")
             global_now = refreshed.get(global_group_name, {}).get("now", "")
             group_now = refreshed.get(candidate_name, {}).get("now", "")
-            if proxy_now != selected_node or global_now != proxy_group_name:
+            if proxy_now != selected_proxy or global_now != proxy_group_name:
                 raise RuntimeError("mihomo 未确认主代理组同步，请重试")
             return {
                 "ok": True,
                 "selectedGroup": candidate_name,
-                "selectedNode": selected_node,
+                "selectedNode": group_now or selected_node,
                 "groupNow": group_now,
                 "proxyNow": proxy_now,
                 "globalNow": global_now,
@@ -1012,6 +1042,42 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError("节点组和节点名称不能为空")
             selected_name = name
             selected_group = ""
+            if current_kernel() == "sing-box":
+                all_proxies = clash_api_request("GET", "/proxies").get("proxies", {})
+                target_group_name = next(
+                    (candidate_name for candidate_name in all_proxies if str(candidate_name).strip().casefold() == group.casefold()),
+                    None,
+                )
+                target_group = all_proxies.get(target_group_name, {}) if target_group_name else {}
+                members = target_group.get("all") if isinstance(target_group, dict) else None
+                proxy_group_name = next(
+                    (candidate_name for candidate_name in all_proxies if str(candidate_name).strip().casefold() == "proxy"),
+                    None,
+                )
+                if target_group_name and isinstance(members, list) and members:
+                    if name not in members:
+                        raise ValueError("所选节点不属于当前订阅组")
+                    if str(target_group.get("type", "")).strip().casefold() == "selector":
+                        clash_api_request("PUT", f"/proxies/{quote(target_group_name, safe='')}", {"name": name})
+                    selected_group = target_group_name
+                    selected_name = name
+                    if proxy_group_name:
+                        clash_api_request("PUT", f"/proxies/{quote(proxy_group_name, safe='')}", {"name": target_group_name})
+                elif group.casefold() == "proxy" and proxy_group_name:
+                    proxy_members = all_proxies.get(proxy_group_name, {}).get("all", [])
+                    if name not in proxy_members:
+                        raise ValueError("所选节点不属于主代理组")
+                    clash_api_request("PUT", f"/proxies/{quote(proxy_group_name, safe='')}", {"name": name})
+                else:
+                    raise ValueError("sing-box 无法解析所选订阅组，请刷新节点列表后重试")
+
+                refreshed = clash_api_request("GET", "/proxies").get("proxies", {})
+                if target_group_name and refreshed.get(target_group_name, {}).get("now") != selected_name:
+                    raise RuntimeError("sing-box 未确认节点切换，请重试")
+                if proxy_group_name and target_group_name and refreshed.get(proxy_group_name, {}).get("now") != target_group_name:
+                    raise RuntimeError("sing-box 主选择器未同步订阅组，请重试")
+                return {"ok": True, "group": group, "name": selected_name, "selectedGroup": selected_group or None}
+
             if current_kernel() == "mihomo" and group.lower() == "proxy":
                 # mihomo's REST API accepts a real proxy name for PROXY, not a
                 # nested proxy-group name. Resolve a requested subscription group

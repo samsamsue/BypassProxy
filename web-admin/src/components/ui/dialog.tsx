@@ -30,8 +30,8 @@ function DialogContent({
 
   return (
     <DialogPortal>
-      <DialogPrimitive.Overlay className={cn("bp-overlay fixed inset-0 bg-black/55 backdrop-blur-md", topLayer ? "z-[80]" : "z-40")} />
-      <div className={cn("fixed inset-0 grid place-items-end p-2 sm:place-items-center sm:p-4", topLayer ? "z-[90]" : "z-50")}>
+      <DialogPrimitive.Overlay className={cn("bp-overlay fixed inset-0 bg-black/55 backdrop-blur-md", topLayer ? "z-[80]" : "z-[70]")} />
+      <div className={cn("fixed inset-0 grid place-items-end p-2 sm:place-items-center sm:p-4", topLayer ? "z-[90]" : "z-[75]")}>
         <DialogPrimitive.Content
           data-bypassproxy-dialog-content
           className={cn(

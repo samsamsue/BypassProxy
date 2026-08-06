@@ -16,6 +16,7 @@ import {
   Home,
   KeyRound,
   Loader2,
+  List,
   MoreVertical,
   Network,
   PanelTop,
@@ -42,7 +43,7 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -102,6 +103,19 @@ type DialogState = {
   dangerous?: boolean;
 };
 
+function subscriptionUpdateAction(name?: string, subscriptionId?: string): DialogState {
+  const single = Boolean(subscriptionId);
+  return {
+    open: true,
+    action: "update-subscription",
+    title: single ? `更新订阅：${name || subscriptionId}` : "更新订阅并应用",
+    description: single ? `只更新${name || subscriptionId}，其他订阅继续使用现有缓存。` : "重新拉取所有启用订阅，失败的订阅会继续使用上次成功缓存。",
+    confirmText: "更新并应用",
+    body: subscriptionId ? { subscriptionId } : undefined,
+    directChoice: true,
+  };
+}
+
 const tokenKey = "bypassproxy-admin-secret";
 const nodeDelayKey = "bypassproxy-node-delays";
 
@@ -158,19 +172,8 @@ const nodeCountryAliases: Array<[string, string]> = [
 const nodeCountryBoundary = "[\\s\\[\\]【】()（）{}<>|/_\\\\\\-·.,:：#]";
 
 function formatNodeName(name: string) {
-  let formatted = name.normalize("NFC");
-  for (const [alias, flag] of nodeCountryAliases) {
-    if (/^[\u3400-\u9fff]+$/.test(alias)) {
-      formatted = formatted.split(alias).join(flag);
-      continue;
-    }
-    const pattern = new RegExp(
-      "(^|" + nodeCountryBoundary + ")" + alias.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&") + "(?=$|" + nodeCountryBoundary + "|\\d)",
-      "giu",
-    );
-    formatted = formatted.replace(pattern, (_match, prefix: string) => prefix + flag);
-  }
-  return formatted;
+  // Keep the kernel's node identifier intact; display formatting must not alter names or numbers.
+  return name.normalize("NFC");
 }
 
 function authHeaders(): Record<string, string> {
@@ -230,18 +233,35 @@ function useOverlayHistory(open: boolean, onClose: () => void, kind: string) {
     };
   }, [kind, open]);
 
-  return () => {
+  return (): Promise<void> => {
     if (!activeRef.current) {
       onCloseRef.current();
-      return;
+      return Promise.resolve();
     }
-    if (window.history.state?.bypassproxyOverlay === markerRef.current) {
-      window.history.back();
-      return;
-    }
+    const marker = markerRef.current;
+    const ownsHistoryEntry = window.history.state?.bypassproxyOverlay === marker;
     activeRef.current = false;
     markerRef.current = "";
+    let resolveClose: () => void = () => undefined;
+    const closed = new Promise<void>((resolve) => { resolveClose = resolve; });
     onCloseRef.current();
+    if (ownsHistoryEntry) {
+      // history.back() dispatches popstate asynchronously. Wait for that
+      // traversal before opening the next overlay, or it can close the new one.
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener("popstate", finish);
+        resolveClose();
+      };
+      window.addEventListener("popstate", finish);
+      window.history.back();
+      window.setTimeout(finish, 250);
+    } else {
+      resolveClose();
+    }
+    return closed;
   };
 }
 
@@ -512,7 +532,7 @@ function ServiceStatus({ status, openAction }: { status: Status | null; openActi
   }
 
   return (
-    <Card className="mx-5 bg-black text-primary sm:mx-8">
+    <Card className="mx-5 text-primary sm:mx-8">
       <CardContent className="flex min-w-0 items-center justify-between gap-2 px-3 py-4 min-[430px]:gap-4 min-[430px]:px-5 min-[430px]:py-5 sm:px-8 sm:py-6">
         <div className="flex min-w-0 cursor-pointer items-baseline gap-2" role="button" tabIndex={0} title="点击切换 Sing-box 状态" onClick={toggleSingBox} onKeyDown={(event) => event.key === "Enter" && toggleSingBox()}>
           <div className="flex min-w-0 items-center gap-3">
@@ -584,7 +604,7 @@ function ServiceStatusV2({ status, openAction }: { status: Status | null; openAc
   });
 
   return (
-    <Card className="mx-3 bg-black text-primary min-[430px]:mx-5 sm:mx-8">
+    <Card className="mx-3 text-primary min-[430px]:mx-5 sm:mx-8">
       <CardContent className="flex min-w-0 items-center justify-between gap-2 px-3 py-4 min-[430px]:gap-4 min-[430px]:px-5 min-[430px]:py-5 sm:px-8 sm:py-6">
         <button type="button" className="flex min-w-0 items-center gap-2 bg-transparent p-0 text-left text-xl font-normal text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary min-[430px]:gap-3 min-[430px]:text-2xl" onClick={() => run(singBoxActive ? "pause-proxy" : "resume-proxy", singBoxActive ? "Pause sing-box" : "Start sing-box", singBoxActive)}>
           <span className="truncate">Sing-box</span>
@@ -785,23 +805,27 @@ type SheetActionItem = { label: string; icon: LucideIcon; onSelect: () => void; 
 function SheetAction({ title, items, children }: { title: string; items: SheetActionItem[]; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const closeOverlay = useOverlayHistory(open, () => setOpen(false), "sheet");
+  function selectItem(onSelect: () => void) {
+    void closeOverlay().then(onSelect);
+  }
 
   return (
     <Sheet open={open} onOpenChange={(nextOpen) => nextOpen ? setOpen(true) : closeOverlay()}>
       <SheetTrigger asChild>{children}</SheetTrigger>
-      <SheetContent>
+      <SheetContent
+        onOverlayClick={() => { void closeOverlay(); }}
+        onPointerDownOutside={() => { void closeOverlay(); }}
+      >
         <SheetHeader>
           <SheetTitle className="text-xl font-medium">{title}</SheetTitle>
           <SheetDescription className="text-sm text-muted-foreground">选择要执行的操作</SheetDescription>
         </SheetHeader>
         <div className="grid gap-2">
           {items.map(({ label, icon: Icon, onSelect, destructive }) => (
-            <SheetClose asChild key={label}>
-              <Button variant="ghost" className={cn("h-12 justify-start rounded-xl bg-muted px-4 text-base hover:bg-accent", destructive && "text-destructive hover:text-destructive")} onClick={onSelect}>
-                <Icon data-icon="inline-start" />
-                {label}
-              </Button>
-            </SheetClose>
+            <Button key={label} variant="ghost" className={cn("h-12 justify-start rounded-xl bg-[#4d4d4d] px-4 text-base hover:bg-accent", destructive && "text-destructive hover:text-destructive")} onClick={() => selectItem(onSelect)}>
+              <Icon data-icon="inline-start" />
+              {label}
+            </Button>
           ))}
         </div>
       </SheetContent>
@@ -821,19 +845,15 @@ function KernelManager({ openAction }: { openAction: (dialog: DialogState) => vo
   );
 }
 
-function SettingsListItem({
-  title,
-  description,
-  icon: Icon,
-  onClick,
-}: {
+type SettingsListItemProps = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "title"> & {
   title: string;
   description: string;
   icon: LucideIcon;
-  onClick: () => void;
-}) {
+};
+
+const SettingsListItem = React.forwardRef<HTMLButtonElement, SettingsListItemProps>(({ title, description, icon: Icon, className, ...props }, ref) => {
   return (
-    <button type="button" className="bp-settings-row" onClick={onClick}>
+    <button ref={ref} type="button" className={cn("bp-settings-row", className)} {...props}>
       <span className="bp-settings-row-icon"><Icon className="size-5" /></span>
       <span className="min-w-0 flex-1 text-left">
         <span className="block text-sm font-medium text-white">{title}</span>
@@ -842,7 +862,8 @@ function SettingsListItem({
       <ChevronRight className="size-5 shrink-0 text-white/40" />
     </button>
   );
-}
+});
+SettingsListItem.displayName = "SettingsListItem";
 
 function SettingsSwitchItem({
   title,
@@ -876,7 +897,7 @@ function ControlCenter({
   openAction,
   openPassword,
   openBasicSettings,
-  openNodes,
+  openConnections,
   openCustomRules,
   openSync,
   showRecent,
@@ -885,7 +906,7 @@ function ControlCenter({
   openAction: (dialog: DialogState) => void;
   openPassword: () => void;
   openBasicSettings: () => void;
-  openNodes: () => void;
+  openConnections: () => void;
   openCustomRules: () => void;
   openSync: () => void;
   showRecent: () => void;
@@ -956,10 +977,10 @@ function ControlCenter({
     },
     {
       group: "节点与分流",
-      title: "节点中心",
-      description: "切换节点、测试延迟和管理活动连接，高级功能仍可进入 MetaCubeXD。",
-      icon: PanelTop,
-      onClick: openNodes,
+      title: "活动连接",
+      description: "查看当前活动连接、流量和连接链路，支持单独关闭或全部关闭。",
+      icon: Network,
+      onClick: openConnections,
       tools: [
         { label: "打开节点面板", icon: ExternalLink, onClick: () => undefined },
         { label: "更新节点面板", icon: RefreshCcw, onClick: () => openAction({ open: true, action: "update-webui", title: "更新节点面板", description: "检查并更新 MetaCubeXD 静态面板。", confirmText: "更新" }) },
@@ -1071,7 +1092,7 @@ function ControlCenter({
         <section className="bp-settings-group">
           <h2>节点与分流</h2>
           <div className="bp-settings-list">
-            {actionRow("节点中心")}
+            {actionRow("活动连接")}
             {actionRow("更新分流规则")}
             <SettingsListItem title="自定义分流" description="管理直连和强制代理域名、IP 规则。" icon={Globe2} onClick={openCustomRules} />
             <SheetAction title="更新" items={[
@@ -1724,7 +1745,7 @@ function subscriptionTraffic(item: Subscription) {
   return { usage, expiry, percent };
 }
 
-function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl: string }) {
+function NodeCenterDialog({ onClose, panelUrl, page = false, openConnections }: { onClose: () => void; panelUrl: string; page?: boolean; openConnections?: () => void }) {
   const [tab, setTab] = useState<"nodes" | "connections">("nodes");
   const [proxies, setProxies] = useState<Record<string, ClashProxy>>({});
   const [selectedGroup, setSelectedGroup] = useState("");
@@ -1928,22 +1949,24 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
   }
 
   return (
-    <DialogShell
+    <Surface
+      page={page}
       title="节点中心"
       description="切换节点、测试延迟并管理当前连接。"
       wide
       onClose={onClose}
       footer={
         <>
+          {openConnections ? <Button variant="secondary" onClick={openConnections}><Network data-icon="inline-start" />活动连接</Button> : null}
           {panelUrl ? <Button variant="secondary" onClick={() => window.open(panelUrl, "_blank", "noopener,noreferrer")}><ExternalLink data-icon="inline-start" />高级面板</Button> : null}
-          <Button onClick={onClose}>完成</Button>
+          {!page ? <Button onClick={onClose}>完成</Button> : null}
         </>
       }
     >
       <Tabs>
-        <TabsList className="grid-cols-2 sm:grid-cols-2">
+        <TabsList className={page ? "grid-cols-1 sm:grid-cols-1" : "grid-cols-2 sm:grid-cols-2"}>
           <TabsTrigger active={tab === "nodes"} onClick={() => { setTab("nodes"); loadProxies(); }}>节点</TabsTrigger>
-          <TabsTrigger active={tab === "connections"} onClick={() => { setTab("connections"); loadConnections(); }}>连接</TabsTrigger>
+          {!page ? <TabsTrigger active={tab === "connections"} onClick={() => { setTab("connections"); loadConnections(); }}>连接</TabsTrigger> : null}
         </TabsList>
         {error ? <Alert message={error} /> : null}
         <TabsContent active={tab === "nodes"}>
@@ -1987,7 +2010,7 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
             {loading ? <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在读取</div> : null}
           </div>
         </TabsContent>
-        <TabsContent active={tab === "connections"}>
+        {!page ? <TabsContent active={tab === "connections"}>
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm text-muted-foreground">{connections.length} 个活动连接</p>
             <div className="flex gap-2">
@@ -2012,9 +2035,82 @@ function NodeCenterDialog({ onClose, panelUrl }: { onClose: () => void; panelUrl
             {!loading && connections.length === 0 ? <div className="rounded-lg bg-muted/40 p-6 text-center text-sm text-muted-foreground">当前没有活动连接</div> : null}
             {loading ? <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在读取</div> : null}
           </div>
-        </TabsContent>
+        </TabsContent> : null}
       </Tabs>
-    </DialogShell>
+    </Surface>
+  );
+}
+
+function ConnectionsPage({ onClose }: { onClose: () => void }) {
+  const [connections, setConnections] = useState<ClashConnection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function loadConnections() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await api<{ connections?: ClashConnection[] }>("/api/connections");
+      setConnections(data.connections || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "读取连接失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadConnections();
+  }, []);
+
+  async function closeConnection(id: string) {
+    try {
+      await api("/api/connections/close", { method: "POST", body: JSON.stringify({ id }) });
+      await loadConnections();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "关闭连接失败");
+    }
+  }
+
+  async function closeAllConnections() {
+    try {
+      await api("/api/connections/close-all", { method: "POST", body: "{}" });
+      await loadConnections();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "关闭连接失败");
+    }
+  }
+
+  return (
+    <PageShell title="活动连接" onClose={onClose} wide>
+      <div className="grid gap-4">
+        {error ? <Alert message={error} /> : null}
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">{connections.length} 个活动连接</p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => { void loadConnections(); }}><RefreshCcw data-icon="inline-start" />刷新</Button>
+            <Button size="sm" variant="destructive" disabled={!connections.length} onClick={() => { void closeAllConnections(); }}>全部关闭</Button>
+          </div>
+        </div>
+        <div className="grid gap-2">
+          {connections.map((connection) => {
+            const host = connection.metadata?.host || connection.metadata?.destinationIP || "未知目标";
+            const port = connection.metadata?.destinationPort;
+            return (
+              <div key={connection.id} className="flex min-w-0 items-center gap-3 rounded-lg bg-muted/45 px-3 py-3">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{host}{port ? `:${port}` : ""}</div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">{connection.chains?.join(" → ") || connection.rule || connection.metadata?.network || "连接中"} · ↑ {formatBytes(connection.upload)} ↓ {formatBytes(connection.download)}</div>
+                </div>
+                <Button size="icon" variant="ghost" title="关闭连接" aria-label={`关闭 ${host} 连接`} onClick={() => { void closeConnection(connection.id); }}><XCircle data-icon="inline-start" /></Button>
+              </div>
+            );
+          })}
+          {!loading && connections.length === 0 ? <div className="rounded-lg bg-muted/40 p-6 text-center text-sm text-muted-foreground">当前没有活动连接</div> : null}
+          {loading ? <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />正在读取</div> : null}
+        </div>
+      </div>
+    </PageShell>
   );
 }
 
@@ -2022,10 +2118,12 @@ function AddSubscriptionDialog({
   onClose,
   reload,
   setResult,
+  openAction,
 }: {
   onClose: () => void;
   reload: () => void;
   setResult: (result: string) => void;
+  openAction: (dialog: DialogState) => void;
 }) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
@@ -2039,6 +2137,7 @@ function AddSubscriptionDialog({
       setResult(result.ok ? "已添加订阅" : "添加失败");
       reload();
       onClose();
+      openAction(subscriptionUpdateAction(result.item.name, result.item.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "添加失败");
     } finally {
@@ -2078,11 +2177,13 @@ function EditSubscriptionDialog({
   onClose,
   reload,
   setResult,
+  openAction,
 }: {
   item: Subscription;
   onClose: () => void;
   reload: () => void;
   setResult: (result: string) => void;
+  openAction: (dialog: DialogState) => void;
 }) {
   const [name, setName] = useState(item.name);
   const [url, setUrl] = useState(item.url);
@@ -2093,10 +2194,11 @@ function EditSubscriptionDialog({
     setBusy(true);
     setError("");
     try {
-      const result = await api<{ ok: boolean }>(`/api/subscriptions/${item.id}`, { method: "PUT", body: JSON.stringify({ ...item, name, url }) });
+      const result = await api<{ ok: boolean; item?: Subscription }>(`/api/subscriptions/${item.id}`, { method: "PUT", body: JSON.stringify({ ...item, name, url }) });
       setResult(result.ok ? "已保存订阅" : "保存失败");
       reload();
       onClose();
+      openAction(subscriptionUpdateAction(result.item?.name || name, result.item?.id || item.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "保存失败");
     } finally {
@@ -2151,11 +2253,13 @@ function SubscriptionCard({
     await api(`/api/subscriptions/${item.id}`, { method: "DELETE" });
     setResult("已删除订阅");
     reload();
+    openAction(subscriptionUpdateAction());
   }
 
   async function toggle(item: Subscription) {
     await api(`/api/subscriptions/${item.id}/toggle`, { method: "POST", body: "{}" });
     reload();
+    openAction(item.enabled ? subscriptionUpdateAction() : subscriptionUpdateAction(item.name, item.id));
   }
 
   function displayHost(url: string) {
@@ -2171,7 +2275,7 @@ function SubscriptionCard({
       <div className="flex min-w-0 items-center justify-between gap-3">
         <h2 className="truncate text-xl font-medium sm:text-2xl">订阅与节点</h2>
         <div className="flex shrink-0 items-center gap-2">
-          <Button size="sm" onClick={() => openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: "重新拉取所有启用订阅，失败的订阅会继续使用上次成功缓存。", confirmText: "更新并应用", directChoice: true })}>
+          <Button size="sm" onClick={() => openAction(subscriptionUpdateAction())}>
             <RefreshCcw data-icon="inline-start" />
             更新
           </Button>
@@ -2203,7 +2307,7 @@ function SubscriptionCard({
 
         ))}        {items.length === 0 ? <Card className="lg:col-span-2"><CardContent className="p-8 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
       </div>
-      {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} /> : null}
+      {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} openAction={openAction} /> : null}
     </section>
   );
 }
@@ -2214,14 +2318,22 @@ function SubscriptionManagerPage({
   setResult,
   openAction,
   openAdd,
-  onBack,
+  openAllSubscriptions,
+  openConnections,
+  activeSubscriptionId,
+  isVisible,
+  onCurrentSubscriptionChange,
 }: {
   items: Subscription[];
   reload: () => void;
   setResult: (result: string) => void;
   openAction: (dialog: DialogState) => void;
   openAdd: () => void;
-  onBack: () => void;
+  openAllSubscriptions: () => void;
+  openConnections: () => void;
+  activeSubscriptionId: string;
+  isVisible: boolean;
+  onCurrentSubscriptionChange: (id: string) => void;
 }) {
   const [proxies, setProxies] = useState<Record<string, ClashProxy>>({});
   const [selectedGroup, setSelectedGroup] = useState("");
@@ -2237,12 +2349,26 @@ function SubscriptionManagerPage({
   const [nodeQuery, setNodeQuery] = useState("");
   const [nodeSort, setNodeSort] = useState<"default" | "delay" | "name">("default");
 
-  const autoGroupName = Object.keys(proxies).find((name) => name.trim() === "自动选择") || "自动选择";
+  const autoGroupName = Object.keys(proxies).find((name) => {
+    const normalized = name.trim().toLowerCase();
+    return normalized === "auto" || normalized === "自动选择";
+  }) || "auto";
   const groupNameFor = (item: Subscription) => `订阅 - ${item.name}`;
   const selectedProxy = automatic ? proxies[autoGroupName] : proxies[selectedGroup];
   const nodeNames = selectedProxy?.all || [];
   const activeNode = selectedProxy?.now || "";
   const canSelect = !automatic && selectedProxy?.type?.toLowerCase() === "selector";
+  const selectedSubscription = items.find((item) => groupNameFor(item) === selectedGroup);
+  const automaticSubscription = automatic && activeNode
+    ? items.find((item) => (proxies[groupNameFor(item)]?.all || []).includes(activeNode))
+    : undefined;
+  const currentSubscription = automatic
+    ? automaticSubscription?.name || "自动选择"
+    : selectedSubscription?.name || selectedGroup || "未选择订阅";
+
+  useEffect(() => {
+    onCurrentSubscriptionChange((automatic ? automaticSubscription : selectedSubscription)?.id || "");
+  }, [automatic, automaticSubscription?.id, onCurrentSubscriptionChange, selectedSubscription?.id]);
   const visibleNodeNames = nodeNames
     .filter((name) => !nodeQuery.trim() || name.toLowerCase().includes(nodeQuery.trim().toLowerCase()))
     .slice()
@@ -2262,9 +2388,19 @@ function SubscriptionManagerPage({
     try {
       const data = await api<{ proxies?: Record<string, ClashProxy> }>("/api/proxies");
       const next = data.proxies || {};
-      setProxies(next);
+      const nextProxyGroup = Object.keys(next).find((name) => name.trim().toLowerCase() === "proxy");
+      const activeProxyName = nextProxyGroup ? String(next[nextProxyGroup]?.now || "").trim() : "";
       const available = items.map(groupNameFor).filter((name) => next[name]?.all?.length);
-      setSelectedGroup((current) => current && next[current] ? current : available[0] || "");
+      setProxies(next);
+      setSelectedGroup((current) => {
+        const activeSubscription = available.find((name) => name === activeProxyName || next[name]?.all?.includes(activeProxyName));
+        return activeSubscription || (current && next[current] ? current : available[0] || "");
+      });
+      const nextAutoGroup = Object.keys(next).find((name) => {
+        const normalized = name.trim().toLowerCase();
+        return normalized === "auto" || normalized === "自动选择";
+      }) || "auto";
+      setAutomatic(Boolean(nextProxyGroup && next[nextProxyGroup]?.now?.trim() === nextAutoGroup));
     } catch (err) {
       setError(err instanceof Error ? err.message : "读取节点失败");
     } finally {
@@ -2275,6 +2411,14 @@ function SubscriptionManagerPage({
   useEffect(() => {
     void loadProxies();
   }, [items]);
+
+  useEffect(() => {
+    if (activeSubscriptionId) void loadProxies();
+  }, [activeSubscriptionId]);
+
+  useEffect(() => {
+    if (isVisible) void loadProxies();
+  }, [isVisible]);
 
   async function applyGroup(group: string) {
     if (!group || applyingGroup || !proxies[group]) return;
@@ -2377,6 +2521,7 @@ function SubscriptionManagerPage({
       await api(`/api/subscriptions/${item.id}`, { method: "DELETE" });
       setResult(`已删除订阅：${item.name}`);
       reload();
+      openAction(subscriptionUpdateAction());
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除订阅失败");
     }
@@ -2395,17 +2540,24 @@ function SubscriptionManagerPage({
     return `${type}${proxy?.udp ? " udp" : ""}`;
   }
 
+  function isCardAction(event: React.SyntheticEvent) {
+    return Boolean((event.target as HTMLElement).closest("[data-card-action]"));
+  }
+
   return (
-    <section className="bp-subscription-page">
+    <section className="bp-subscription-page bp-subscription-layout">
       <header className="bp-app-topbar bp-subscription-header">
-        <Button size="icon" variant="ghost" aria-label="返回主页" title="返回主页" onClick={onBack}>
-          <ArrowLeft className="size-6" strokeWidth={1.8} />
-        </Button>
         <h1>订阅管理</h1>
+        <div className="bp-subscription-current" aria-live="polite">
+          <strong>{currentSubscription}</strong>
+          <span>/</span>
+          <span className="bp-node-name">{activeNode ? formatNodeName(activeNode) : "未选择节点"}</span>
+        </div>
         <SheetAction title="订阅管理" items={[
           { label: "添加订阅", icon: Plus, onSelect: openAdd },
-          { label: "更新全部订阅", icon: RefreshCcw, onSelect: () => openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: "重新拉取所有启用订阅，失败的订阅会继续使用上次成功缓存。", confirmText: "更新并应用", directChoice: true }) },
+          { label: "更新全部订阅", icon: RefreshCcw, onSelect: () => openAction(subscriptionUpdateAction()) },
           { label: "刷新节点列表", icon: Gauge, onSelect: () => { void loadProxies(); } },
+          { label: "活动连接", icon: Network, onSelect: openConnections },
         ]}>
           <Button size="icon" variant="ghost" aria-label="订阅管理菜单" title="订阅管理菜单">
             <MoreVertical className="size-6" strokeWidth={1.8} />
@@ -2415,61 +2567,79 @@ function SubscriptionManagerPage({
 
       {error ? <Alert message={error} /> : null}
 
-      <div className="bp-subscription-plans subscription-scroll flex min-w-0 gap-4 overflow-x-auto px-4 pb-2 snap-x snap-mandatory sm:px-0">
-        {items.map((item) => {
-          const group = groupNameFor(item);
-          const active = !automatic && selectedGroup === group;
-          const traffic = subscriptionTraffic(item);
-          return (
-            <Card
-              key={item.id}
-              className={cn("bp-subscription-plan snap-start", active && "is-active", !item.enabled && "is-disabled", applyingGroup === group && "is-loading")}
-              role="button"
-              tabIndex={item.enabled ? 0 : -1}
-              aria-disabled={!item.enabled}
-              onClick={() => item.enabled && void applyGroup(group)}
-              onKeyDown={(event) => {
-                if (item.enabled && (event.key === "Enter" || event.key === " ")) {
-                  event.preventDefault();
-                  void applyGroup(group);
-                }
-              }}
-            >
-              <CardContent className="flex min-h-[160px] flex-col gap-3 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2 className="truncate text-[18px] font-bold leading-none">{item.name}</h2>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button size="icon" variant="ghost" className="bp-subscription-card-action" aria-label={`刷新${item.name}`} title={`刷新${item.name}`} onClick={(event) => { event.stopPropagation(); openAction({ open: true, action: "update-subscription", title: "更新订阅并应用", description: `更新${item.name}及其他启用订阅。`, confirmText: "更新并应用", directChoice: true }); }}>
-                      <RefreshCcw className="size-3.5" />
-                    </Button>
-                    <SheetAction title={item.name} items={[
-                      { label: "编辑", icon: Pencil, onSelect: () => setEditingItem(item) },
-                      { label: item.enabled ? "停用" : "启用", icon: Power, onSelect: () => { void api(`/api/subscriptions/${item.id}/toggle`, { method: "POST", body: "{}" }).then(reload); } },
-                      { label: "删除", icon: Trash2, destructive: true, onSelect: () => { void removeSubscription(item); } },
-                    ]}>
-                      <Button size="icon" variant="ghost" className="bp-subscription-card-action" aria-label={`${item.name}更多操作`} title="更多操作" onClick={(event) => event.stopPropagation()}>
-                        <MoreVertical className="size-3.5" />
+      <div className="bp-subscription-plans-frame">
+        <Button
+          size="icon"
+          variant="ghost"
+          className="bp-subscription-all-trigger"
+          aria-label="查看全部订阅"
+          title="查看全部订阅"
+          onClick={openAllSubscriptions}
+        >
+          <List data-icon="inline-start" />
+        </Button>
+        <div className="bp-subscription-plans subscription-scroll flex min-w-0 gap-4 overflow-x-auto pb-2 snap-x snap-mandatory">
+          {items.length ? <span className="bp-subscription-scroll-spacer" aria-hidden="true" /> : null}
+          {items.map((item) => {
+            const group = groupNameFor(item);
+            const active = !automatic && selectedGroup === group;
+            const traffic = subscriptionTraffic(item);
+            return (
+              <Card
+                key={item.id}
+                className={cn("bp-subscription-plan snap-start", active && "is-active", !item.enabled && "is-disabled", applyingGroup === group && "is-loading")}
+                role="button"
+                tabIndex={item.enabled ? 0 : -1}
+                aria-disabled={!item.enabled}
+                onClick={(event) => {
+                  if (isCardAction(event)) return;
+                  if (item.enabled) void applyGroup(group);
+                }}
+                onKeyDown={(event) => {
+                  if (isCardAction(event)) return;
+                  if (item.enabled && (event.key === "Enter" || event.key === " ")) {
+                    event.preventDefault();
+                    void applyGroup(group);
+                  }
+                }}
+              >
+                <CardContent className="flex min-h-[130px] flex-col gap-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-[18px] font-bold leading-none">{item.name}</h2>
+                    </div>
+                    <div data-card-action className="flex shrink-0 items-center gap-1" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+                      <Button size="icon" variant="ghost" className="bp-subscription-card-action" aria-label={`刷新${item.name}`} title={`刷新${item.name}`} onClick={(event) => { event.stopPropagation(); openAction(subscriptionUpdateAction(item.name, item.id)); }}>
+                        <RefreshCcw className="size-3.5" />
                       </Button>
-                    </SheetAction>
+                      <SheetAction title={item.name} items={[
+                        { label: "编辑", icon: Pencil, onSelect: () => setEditingItem(item) },
+                        { label: item.enabled ? "停用" : "启用", icon: Power, onSelect: () => { void api(`/api/subscriptions/${item.id}/toggle`, { method: "POST", body: "{}" }).then(() => { reload(); openAction(item.enabled ? subscriptionUpdateAction() : subscriptionUpdateAction(item.name, item.id)); }); } },
+                        { label: "删除", icon: Trash2, destructive: true, onSelect: () => { void removeSubscription(item); } },
+                      ]}>
+                        <Button size="icon" variant="ghost" className="bp-subscription-card-action" aria-label={`${item.name}更多操作`} title="更多操作" onClick={(event) => event.stopPropagation()}>
+                          <MoreVertical className="size-3.5" />
+                        </Button>
+                      </SheetAction>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-auto grid gap-1.5">
-                  <div className="flex items-end justify-between gap-4">
-                    <p className="truncate text-xs">{traffic.usage}</p>
-                    <p className="max-w-[52%] truncate text-right text-xs opacity-55">{item.enabled ? traffic.expiry : "不可用"}</p>
+                  <div className="mt-auto grid gap-1.5">
+                    <div className="flex items-end justify-between gap-4">
+                      <p className="truncate text-xs">{traffic.usage}</p>
+                      <p className="max-w-[52%] truncate text-right text-xs opacity-55">{item.enabled ? traffic.expiry : "不可用"}</p>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-black/20"><div className="h-full rounded-full bg-black/25 transition-all" style={{ width: `${traffic.percent}%` }} /></div>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-black/20"><div className="h-full rounded-full bg-black/25 transition-all" style={{ width: `${traffic.percent}%` }} /></div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-        {!items.length ? <Card className="min-w-full"><CardContent className="p-8 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
+                </CardContent>
+              </Card>
+            );
+          })}
+          {items.length ? <span className="bp-subscription-scroll-spacer" aria-hidden="true" /> : null}
+          {!items.length ? <Card className="min-w-full"><CardContent className="p-8 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
+        </div>
       </div>
 
-      <div className="bp-subscription-nodes px-1.5">
+      <div className="bp-subscription-nodes px-4 sm:px-6">
         <div className="bp-node-toolbar">
           <div className="bp-subscription-auto flex items-center gap-2">
             <span>自动选择</span>
@@ -2493,7 +2663,7 @@ function SubscriptionManagerPage({
         </div>
         <div className="grid gap-2">
           {visibleNodeNames.map((name) => {
-            const active = name === activeNode && !automatic;
+            const active = name === activeNode;
             const delay = Object.prototype.hasOwnProperty.call(delays, name) ? delays[name] : undefined;
             const testingNode = testingNodes.includes(name);
             return (
@@ -2514,21 +2684,171 @@ function SubscriptionManagerPage({
           {!loading && nodeNames.length > 0 && !visibleNodeNames.length ? <div className="rounded-2xl bg-muted/50 p-8 text-center text-sm text-muted-foreground">没有匹配的节点</div> : null}
         </div>
       </div>
-      {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} /> : null}
+      {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} openAction={openAction} /> : null}
     </section>
+  );
+}
+
+function AllSubscriptionsPage({
+  items,
+  reload,
+  setResult,
+  openAction,
+  openAdd,
+  activeSubscriptionId,
+  onCurrentSubscriptionChange,
+  onClose,
+}: {
+  items: Subscription[];
+  reload: () => void;
+  setResult: (result: string) => void;
+  openAction: (dialog: DialogState) => void;
+  openAdd: () => void;
+  activeSubscriptionId: string;
+  onCurrentSubscriptionChange: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [editingItem, setEditingItem] = useState<Subscription | null>(null);
+  const [applyingId, setApplyingId] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCurrentSubscription() {
+      try {
+        const data = await api<{ proxies?: Record<string, ClashProxy> }>("/api/proxies");
+        const proxies = data.proxies || {};
+        const proxyGroup = Object.keys(proxies).find((name) => name.trim().toLowerCase() === "proxy");
+        const activeNode = proxyGroup ? String(proxies[proxyGroup]?.now || "").trim() : "";
+        const activeItem = items.find((item) => {
+          const group = `订阅 - ${item.name}`;
+          return activeNode === group || Boolean(activeNode && proxies[group]?.all?.includes(activeNode));
+        });
+        if (!cancelled) onCurrentSubscriptionChange(activeItem?.id || "");
+      } catch {
+        if (!cancelled) onCurrentSubscriptionChange("");
+      }
+    }
+    void loadCurrentSubscription();
+    return () => {
+      cancelled = true;
+    };
+  }, [items, onCurrentSubscriptionChange]);
+
+  async function applySubscription(item: Subscription) {
+    if (!item.enabled || applyingId) return;
+    setApplyingId(item.id);
+    try {
+      const group = `订阅 - ${item.name}`;
+      const result = await api<{ selectedNode?: string }>('/api/proxies/apply-group', {
+        method: "POST",
+        body: JSON.stringify({ group }),
+      });
+      onCurrentSubscriptionChange(item.id);
+      setResult(`已应用${item.name}：${result.selectedNode || "当前节点"}`);
+      reload();
+    } catch (err) {
+      setResult(err instanceof Error ? err.message : "应用订阅失败");
+    } finally {
+      setApplyingId("");
+    }
+  }
+
+  async function removeSubscription(item: Subscription) {
+    if (!window.confirm(`删除 ${item.name}？`)) return;
+    try {
+      await api(`/api/subscriptions/${item.id}`, { method: "DELETE" });
+      setResult(`已删除订阅：${item.name}`);
+      reload();
+      openAction(subscriptionUpdateAction());
+    } catch (err) {
+      setResult(err instanceof Error ? err.message : "删除订阅失败");
+    }
+  }
+
+  return (
+    <PageShell title="全部订阅" onClose={onClose} wide>
+      <div className="bp-all-subscriptions-page grid gap-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm text-white/55">共 {items.length} 个订阅</p>
+          </div>
+          <Button size="sm" onClick={openAdd}>
+            <Plus data-icon="inline-start" />
+            添加订阅
+          </Button>
+        </div>
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+          {items.map((item) => {
+            const traffic = subscriptionTraffic(item);
+            const active = activeSubscriptionId === item.id;
+            return (
+              <Card
+                key={item.id}
+                className={cn("bp-subscription-plan bp-all-subscription-plan", active && "is-active", !item.enabled && "is-disabled", applyingId === item.id && "is-loading")}
+                role="button"
+                tabIndex={item.enabled ? 0 : -1}
+                aria-disabled={!item.enabled}
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("[data-card-action]")) return;
+                  void applySubscription(item);
+                }}
+                onKeyDown={(event) => {
+                  if ((event.target as HTMLElement).closest("[data-card-action]")) return;
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    void applySubscription(item);
+                  }
+                }}
+              >
+                <CardContent className="flex min-h-[130px] flex-col gap-3 p-4">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <h2 className="min-w-0 truncate text-[18px] font-bold leading-none">{item.name}</h2>
+                    <div data-card-action className="flex shrink-0 items-center gap-1" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+                      <Button size="icon" variant="ghost" className="bp-subscription-card-action" aria-label={`刷新${item.name}`} title={`刷新${item.name}`} onClick={() => openAction(subscriptionUpdateAction(item.name, item.id))}>
+                        <RefreshCcw className="size-3.5" />
+                      </Button>
+                      <SheetAction title={item.name} items={[
+                        { label: "编辑", icon: Pencil, onSelect: () => setEditingItem(item) },
+                        { label: item.enabled ? "停用" : "启用", icon: Power, onSelect: () => { void api(`/api/subscriptions/${item.id}/toggle`, { method: "POST", body: "{}" }).then(() => { reload(); openAction(item.enabled ? subscriptionUpdateAction() : subscriptionUpdateAction(item.name, item.id)); }); } },
+                        { label: "删除", icon: Trash2, destructive: true, onSelect: () => { void removeSubscription(item); } },
+                      ]}>
+                        <Button size="icon" variant="ghost" className="bp-subscription-card-action" aria-label={`${item.name}更多操作`} title="更多操作">
+                          <MoreVertical className="size-3.5" />
+                        </Button>
+                      </SheetAction>
+                    </div>
+                  </div>
+                  <div className="mt-auto grid gap-1.5">
+                    <div className="flex items-end justify-between gap-4">
+                      <p className="truncate text-xs">{traffic.usage}</p>
+                      <p className="max-w-[52%] truncate text-right text-xs opacity-55">{item.enabled ? traffic.expiry : "不可用"}</p>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-black/20">
+                      <div className="h-full rounded-full bg-black/25 transition-all" style={{ width: `${traffic.percent}%` }} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+          {!items.length ? <Card><CardContent className="p-10 text-center text-sm text-muted-foreground">暂无订阅</CardContent></Card> : null}
+        </div>
+      </div>
+      {editingItem ? <EditSubscriptionDialog item={editingItem} onClose={() => setEditingItem(null)} reload={reload} setResult={setResult} openAction={openAction} /> : null}
+    </PageShell>
   );
 }
 
 function HomeSummary({
   status,
   subscriptions,
-  openNodes,
+  openConnections,
   openSubscriptions,
   openAction,
 }: {
   status: Status | null;
   subscriptions: Subscription[];
-  openNodes: () => void;
+  openConnections: () => void;
   openSubscriptions: () => void;
   openAction: (dialog: DialogState) => void;
 }) {
@@ -2553,7 +2873,7 @@ function HomeSummary({
         ))}
       </div>
       <div className="bp-home-actions" aria-label="常用操作">
-        <FunctionTile title="节点中心" icon={PanelTop} onClick={openNodes} />
+        <FunctionTile title="活动连接" icon={Network} onClick={openConnections} />
         <FunctionTile title="订阅管理" icon={Send} onClick={openSubscriptions} />
         <FunctionTile title="网络诊断" icon={Bug} onClick={() => openAction({ open: true, action: "diagnose-network", title: "网络诊断", description: "检查服务、DNS、转发、订阅节点等常见问题。", confirmText: "开始诊断" })} />
         <FunctionTile title="一键修复" icon={Wrench} onClick={() => openAction({ open: true, action: "repair", title: "一键修复", description: "修复配置、服务和转发状态。", confirmText: "开始修复" })} />
@@ -2563,9 +2883,9 @@ function HomeSummary({
 }
 
 type AppTab = "home" | "subscriptions" | "settings";
-type AppRoute = AppTab | "basic-settings" | "password" | "custom-rules" | "sync";
+type AppRoute = AppTab | "connections" | "all-subscriptions" | "basic-settings" | "password" | "custom-rules" | "sync";
 
-const appRoutes: AppRoute[] = ["home", "subscriptions", "settings", "basic-settings", "password", "custom-rules", "sync"];
+const appRoutes: AppRoute[] = ["home", "subscriptions", "connections", "all-subscriptions", "settings", "basic-settings", "password", "custom-rules", "sync"];
 
 function routeFromLocation(): AppRoute {
   const value = new URLSearchParams(window.location.search).get("route");
@@ -2614,13 +2934,14 @@ function App() {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dialog, setDialog] = useState<DialogState>({ open: false, action: "", title: "", description: "" });
   const [addOpen, setAddOpen] = useState(false);
-  const [nodesOpen, setNodesOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => routeFromLocation());
+  const [pageReturnRoute, setPageReturnRoute] = useState<AppTab>("home");
   const [busyAction, setBusyAction] = useState("");
   const [dialogOutput, setDialogOutput] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [lastResult, setLastResult] = useState("");
+  const [activeSubscriptionId, setActiveSubscriptionId] = useState("");
   const [error, setError] = useState("");
   const [modeBusy, setModeBusy] = useState(false);
 
@@ -2629,6 +2950,11 @@ function App() {
     const url = urlForRoute(next);
     window.history[replace ? "replaceState" : "pushState"]({ bypassproxyRoute: next }, "", url);
     setRoute(next);
+  }
+
+  function openPage(next: "connections", returnRoute: AppTab) {
+    setPageReturnRoute(returnRoute);
+    navigate(next);
   }
 
   async function loadAll() {
@@ -2726,7 +3052,9 @@ function App() {
 
   if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
 
-  const rootTab: AppTab = route === "subscriptions"
+  const rootTab: AppTab = route === "connections"
+    ? pageReturnRoute
+    : route === "subscriptions" || route === "all-subscriptions"
     ? "subscriptions"
     : route === "settings" || ["basic-settings", "password", "custom-rules", "sync"].includes(route)
       ? "settings"
@@ -2734,7 +3062,11 @@ function App() {
 
   return (
     <main className="min-h-screen bg-background pb-28 sm:pb-10">
-      <div className="mx-auto grid w-full max-w-[1120px] gap-12 px-4 sm:gap-14 sm:px-6 lg:px-8">
+      <div className={cn(
+        rootTab === "subscriptions"
+          ? "mx-auto grid w-full max-w-[1120px] gap-12 px-0 sm:gap-14"
+          : "mx-auto grid w-full max-w-[1120px] gap-12 px-4 sm:gap-14 sm:px-6 lg:px-8",
+      )}>
         <div className={cn("min-w-0", rootTab !== "home" && "hidden")}>
           <section className="-mx-4 flex min-h-0 flex-col overflow-hidden rounded-b-[20px] bg-[linear-gradient(180deg,#5f5f5f,#2d2d2d)] lg:-mx-8 sm:-mx-6">
             <HeaderPanel
@@ -2744,24 +3076,25 @@ function App() {
             />
             <LegacyNetworkOverviewV2 status={status} openAction={openAction} />
           </section>
-          <HomeSummary status={status} subscriptions={subscriptions} openNodes={() => setNodesOpen(true)} openSubscriptions={() => navigate("subscriptions")} openAction={openAction} />
+          <HomeSummary status={status} subscriptions={subscriptions} openConnections={() => openPage("connections", "home")} openSubscriptions={() => navigate("subscriptions")} openAction={openAction} />
         </div>
 
         {error ? <Alert message={error} /> : null}
         <div className={cn("min-w-0", rootTab !== "subscriptions" && "hidden")}>
-          <SubscriptionManagerPage items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} onBack={() => navigate("home", true)} />
+          <SubscriptionManagerPage items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} openAllSubscriptions={() => navigate("all-subscriptions")} openConnections={() => openPage("connections", "subscriptions")} activeSubscriptionId={activeSubscriptionId} isVisible={route === "subscriptions"} onCurrentSubscriptionChange={route === "subscriptions" ? setActiveSubscriptionId : () => undefined} />
         </div>
         <div className={cn("min-w-0", rootTab !== "settings" && "hidden")}>
-          <ControlCenter status={status} openAction={openAction} openPassword={() => navigate("password")} openBasicSettings={() => navigate("basic-settings")} openNodes={() => setNodesOpen(true)} openCustomRules={() => navigate("custom-rules")} openSync={() => navigate("sync")} showRecent={() => setRecentOpen(true)} />
+          <ControlCenter status={status} openAction={openAction} openPassword={() => navigate("password")} openBasicSettings={() => navigate("basic-settings")} openConnections={() => openPage("connections", "settings")} openCustomRules={() => navigate("custom-rules")} openSync={() => navigate("sync")} showRecent={() => setRecentOpen(true)} />
         </div>
+        {route === "connections" ? <ConnectionsPage onClose={() => navigate(pageReturnRoute, true)} /> : null}
         {route === "basic-settings" ? <BasicSettingsDialog page onClose={() => navigate("settings", true)} setResult={setLastResult} /> : null}
         {route === "password" ? <PasswordDialog page onClose={() => navigate("settings", true)} onPasswordChanged={() => setLoggedIn(false)} /> : null}
         {route === "custom-rules" ? <CustomRulesDialog page onClose={() => navigate("settings", true)} setResult={setLastResult} openAction={openAction} /> : null}
         {route === "sync" ? <BackupSyncDialog page onClose={() => navigate("settings", true)} openAction={openAction} setResult={setLastResult} /> : null}
+        {route === "all-subscriptions" ? <AllSubscriptionsPage items={subscriptions} reload={loadAll} setResult={setLastResult} openAction={openAction} openAdd={() => setAddOpen(true)} activeSubscriptionId={activeSubscriptionId} onCurrentSubscriptionChange={setActiveSubscriptionId} onClose={() => navigate("subscriptions", true)} /> : null}
       </div>
       <BottomTabBar activeTab={rootTab} onChange={(next) => navigate(next)} />
-      {addOpen ? <AddSubscriptionDialog onClose={() => setAddOpen(false)} reload={loadAll} setResult={setLastResult} /> : null}
-      {nodesOpen ? <NodeCenterDialog onClose={() => setNodesOpen(false)} panelUrl={status?.addresses.panel || ""} /> : null}
+      {addOpen ? <AddSubscriptionDialog onClose={() => setAddOpen(false)} reload={loadAll} setResult={setLastResult} openAction={openAction} /> : null}
       {recentOpen ? <TextDialog title="最近结果" content={lastResult} onClose={() => setRecentOpen(false)} /> : null}
       <ActionDialog dialog={dialog} setDialog={setDialog} running={Boolean(busyAction)} output={dialogOutput} error={dialogError} onConfirm={confirmAction} />
     </main>

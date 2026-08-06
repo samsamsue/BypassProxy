@@ -7,19 +7,26 @@ const Sheet = DialogPrimitive.Root;
 const SheetTrigger = DialogPrimitive.Trigger;
 const SheetClose = DialogPrimitive.Close;
 
+type SheetContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  onOverlayClick?: () => void;
+};
+
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  SheetContentProps
+>(({ className, children, onOverlayClick, ...props }, ref) => (
   <DialogPrimitive.Portal>
-    <DialogPrimitive.Overlay className="bp-overlay fixed inset-0 z-40 bg-black/55 backdrop-blur-md" />
+    <DialogPrimitive.Overlay
+      className="bp-overlay fixed inset-0 z-[70] bg-black/55 backdrop-blur-md"
+      onClick={onOverlayClick}
+    />
     <DialogPrimitive.Content
       ref={ref}
-      className={cn("bp-sheet fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] w-full max-w-lg flex-col rounded-t-[24px] bg-card p-5 text-card-foreground outline-none", className)}
+      className={cn("bp-sheet fixed inset-x-0 bottom-0 z-[75] mx-auto flex max-h-[85dvh] w-full max-w-lg flex-col rounded-t-[24px] bg-card p-5 text-card-foreground outline-none", className)}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 grid size-9 place-items-center rounded-full bg-muted text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+      <DialogPrimitive.Close className="absolute right-4 top-4 grid size-9 place-items-center rounded-full bg-[#4d4d4d] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
         <X className="size-4" />
         <span className="sr-only">关闭</span>
       </DialogPrimitive.Close>

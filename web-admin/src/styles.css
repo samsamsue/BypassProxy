@@ -4,9 +4,9 @@
 
 @layer base {
   :root {
-    --background: 0 0% 0%;
+    --background: 0 0% 18.43%;
     --foreground: 0 0% 100%;
-    --card: 0 0% 15%;
+    --card: 0 0% 23.14%;
     --card-foreground: 0 0% 100%;
     --popover: 0 0% 10%;
     --popover-foreground: 0 0% 100%;
@@ -117,7 +117,7 @@
     flex-direction: column;
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: #000;
+    background: rgb(47, 47, 47);
     padding: 0;
     animation: bp-route-in 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
@@ -131,7 +131,7 @@
     min-height: 68px;
     margin: 0;
     padding: calc(10px + env(safe-area-inset-top)) max(16px, calc((100vw - 1120px) / 2)) 10px;
-    background: rgba(0, 0, 0, 0.86);
+    background: rgba(47, 47, 47, 0.88);
     -webkit-backdrop-filter: blur(18px) saturate(125%);
     backdrop-filter: blur(18px) saturate(125%);
   }
@@ -178,10 +178,10 @@
     transform: translateX(-50%);
     padding: 6px;
     border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 22px;
-    background: rgba(32, 32, 32, 0.66);
-    -webkit-backdrop-filter: blur(18px) saturate(125%);
-    backdrop-filter: blur(18px) saturate(125%);
+    border-radius: 50px;
+    background: rgba(32, 32, 32, 0.3);
+    -webkit-backdrop-filter: blur(30px) saturate(170%);
+    backdrop-filter: blur(30px) saturate(170%);
     box-shadow: none;
   }
 
@@ -196,7 +196,7 @@
     min-width: 0;
     flex: 1 1 0;
     gap: 6px;
-    border-radius: inherit;
+    border-radius: 50px !important;
     padding: 0 14px;
     color: rgba(255, 255, 255, 0.95);
     font-size: 13px;
@@ -205,13 +205,30 @@
   }
 
   .bp-tabbar-item:hover {
-    background: rgba(255, 255, 255, 0.06);
-    color: #fff;
+    background-color: transparent !important;
+    color: rgba(255, 255, 255, 0.95) !important;
   }
 
   .bp-tabbar-item.is-active {
-    background: #0d3214;
+    background: #ffffff0d;
     color: #40ff00;
+  }
+
+  .bp-tabbar-item.is-active:hover {
+    background-color: #ffffff0d !important;
+    color: #40ff00 !important;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .bp-tabbar-item:hover {
+      background-color: #ffffff29 !important;
+      color: rgba(255, 255, 255, 0.95) !important;
+    }
+
+    .bp-tabbar-item.is-active:hover {
+      background-color: #ffffff29 !important;
+      color: #40ff00 !important;
+    }
   }
 
   .bp-page-shell {
@@ -265,7 +282,7 @@
     z-index: 20;
     margin-top: auto;
     align-items: center;
-    background: rgba(0, 0, 0, 0.88);
+    background: rgba(47, 47, 47, 0.92);
     -webkit-backdrop-filter: blur(18px) saturate(125%);
     backdrop-filter: blur(18px) saturate(125%);
     padding-bottom: max(12px, env(safe-area-inset-bottom));
@@ -285,11 +302,11 @@
     align-items: center;
     gap: 12px;
     margin: 0 -1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
     padding: 10px 1rem;
-    background: rgb(47, 47, 47);
-    -webkit-backdrop-filter: blur(18px) saturate(125%);
-    backdrop-filter: blur(18px) saturate(125%);
+    background: rgba(47, 47, 47, 0.58);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    backdrop-filter: blur(24px) saturate(150%);
   }
 
   .bp-app-topbar h1 {
@@ -343,7 +360,7 @@
     border: 0;
     border-radius: 16px;
     padding: 12px 14px;
-    background: #171717;
+    background: #3b3b3b;
     color: #fff;
     transition: background-color 180ms ease, transform 180ms ease;
   }
@@ -358,7 +375,7 @@
     flex: 0 0 auto;
     place-items: center;
     border-radius: 13px;
-    background: #323232;
+    background: #4d4d4d;
     color: #fff;
   }
 
@@ -400,7 +417,7 @@
     gap: 7px;
     border-radius: 14px;
     padding: 10px 12px;
-    background: #171717;
+    background: #3b3b3b;
   }
 
   .bp-home-stat span { color: rgba(255, 255, 255, 0.42); font-size: 11px; }
@@ -466,12 +483,52 @@
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    overflow-x: hidden;
+    overflow: visible;
+  }
+
+  .bp-subscription-layout {
+    padding: 0;
+  }
+
+  .bp-subscription-header {
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .bp-subscription-current {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 12px 0;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+
+  .bp-subscription-current strong {
+    min-width: 0;
+    overflow: hidden;
+    color: #fff;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .bp-subscription-current .bp-node-name {
+    min-width: 0;
+    overflow: hidden;
+    color: #40ff00;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .bp-subscription-page > :not(.bp-subscription-header) {
     min-width: 0;
     max-width: 100%;
+    padding: 0 1rem;
   }
 
   .bp-subscription-header h1 {
@@ -483,30 +540,69 @@
     max-width: 100%;
     box-sizing: border-box;
     margin-top: 30px;
+    margin-inline: 0;
     padding-top: 10px;
+    padding-inline: 0;
+    scroll-padding-inline: 0;
+  }
+
+  .bp-subscription-plans-frame {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .bp-subscription-all-trigger {
+    position: absolute;
+    top: 2px;
+    right: 12px;
+    z-index: 2;
+    border: 0 !important;
+    border-radius: 14px !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #fff !important;
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+    backdrop-filter: blur(18px) saturate(145%);
+  }
+
+  .bp-subscription-all-trigger:hover {
+    background: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .bp-subscription-scroll-spacer {
+    width: 0;
+    min-width: 0;
+    flex: 0 0 0;
   }
 
   .bp-subscription-plan {
-    width: min(380px, calc(100% - 48px));
-    min-width: min(380px, calc(100% - 48px));
+    width: min(320px, calc(80% - 48px));
+    min-width: min(320px, calc(80% - 48px));
     flex: 0 0 auto;
     border-radius: 28px;
-    background: #282828;
+    background: #3b3b3b;
     color: #fff;
     cursor: pointer;
     transition: transform 180ms ease, background-color 220ms ease, color 220ms ease, opacity 220ms ease;
   }
 
-  .bp-subscription-plan:hover { transform: translateY(-2px); background: #303030; }
+  .bp-subscription-plan:hover { transform: translateY(-2px); background: #444; }
   .bp-subscription-plan:focus-visible { outline: 2px solid #40ff00; outline-offset: 3px; }
   .bp-subscription-plan.is-active { background: #40ff00; color: #000; }
   .bp-subscription-plan.is-active:hover { background: #4dff14; }
   .bp-subscription-plan.is-active h2 { color: #000; }
   .bp-subscription-plan.is-disabled { cursor: not-allowed; opacity: 0.5; }
-  .bp-subscription-plan.is-disabled:hover { transform: none; background: #282828; }
+  .bp-subscription-plan.is-disabled:hover { transform: none; background: #3b3b3b; }
   .bp-subscription-plan.is-loading { opacity: 0.68; }
   .bp-subscription-plan .subscription-id { color: inherit; opacity: 0.45; }
   .bp-subscription-plan .text-muted-foreground { color: inherit; opacity: 0.55; }
+
+  .bp-all-subscription-plan {
+    width: 100%;
+    min-width: 0;
+  }
 
   .bp-subscription-plan > div > div:first-child button { color: inherit; }
   .bp-subscription-plan > div > div:first-child button:hover { background: rgba(0, 0, 0, 0.08); }
@@ -589,9 +685,9 @@
     align-items: center;
     gap: 12px;
     border: 0;
-    border-radius: 16px;
+    border-radius: 8px;
     padding: 6px 10px;
-    background: #252525;
+    background: #3b3b3b;
     color: #fff;
     text-align: left;
     transition: background-color 200ms ease, transform 180ms ease, opacity 200ms ease;
@@ -610,6 +706,7 @@
 
   @media (min-width: 640px) {
     .bp-app-topbar { margin-right: -1.5rem; margin-left: -1.5rem; padding-right: 1.5rem; padding-left: 1.5rem; }
+    .bp-subscription-scroll-spacer { flex-basis: 8px; }
   }
 
   @media (min-width: 1024px) {
@@ -678,13 +775,13 @@
   .subscription-tile {
     position: relative;
     border: 0;
-    background: #323232;
+    background: #3b3b3b;
     transition: transform 180ms ease, background-color 180ms ease;
   }
 
   .subscription-tile:hover {
     transform: translateY(-2px);
-    background: #383838;
+    background: #444;
   }
 
   .subscription-tile > div {

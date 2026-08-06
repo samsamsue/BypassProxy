@@ -1,9 +1,10 @@
 import * as React from "react";
 import { cn } from "@/lib";
 
-function Card({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <section className={cn("rounded-[20px] bg-card text-card-foreground", className)} {...props} />;
-}
+const Card = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElement>>(({ className, ...props }, ref) => (
+  <section ref={ref} className={cn("rounded-[20px] bg-card text-card-foreground", className)} {...props} />
+));
+Card.displayName = "Card";
 
 function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("flex items-start justify-between gap-4 px-5 py-4", className)} {...props} />;
